@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daily Habit Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* Custom scrollbar and minor animation utilities */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
+        .fade-in { animation: fadeIn 0.2s ease-out; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Calendar grid borders */
+        .calendar-cell {
+            border-right: 1px solid #e2e8f0;
+            border-bottom: 1px solid #e2e8f0;
+            min-height: 100px;
+        }
+        .calendar-cell:nth-child(7n) { border-right: none; }
+        
+        /* Toggle Switch styling */
+        .toggle-checkbox:checked {
+            right: 0;
+            border-color: #10B981;
+        }
+        .toggle-checkbox:checked + .toggle-label {
+            background-color: #10B981;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans min-h-screen flex flex-col">
+
+    <!-- App Container -->
+    <div class="flex-grow p-4 sm:p-8 max-w-6xl mx-auto w-full flex flex-col">
+        
+        <!-- Header -->
+        <header class="flex flex-col sm:flex-row justify-between items-center mb-8 gap-4">
+            <div>
+                <h1 class="text-3xl font-extrabold tracking-tight text-slate-900">Life Tracker</h1>
+                <p class="text-sm text-slate-500 mt-1" id="connectionStatus">Connecting to database...</p>
+            </div>
+            
+            <!-- View Tabs -->
+            <div class="flex bg-slate-100 p-1 rounded-lg">
+                <button id="tabCalendar" class="px-4 py-2 text-sm font-semibold rounded-md bg-white shadow-sm text-slate-800 transition-all">Calendar</button>
+                <button id="tabReports" class="px-4 py-2 text-sm font-semibold rounded-md text-slate-500 hover:text-slate-800 hover:bg-slate-200 transition-all">Reports</button>
+            </div>
+
+            <!-- Month Navigation (Calendar View Only) -->
+            <div id="monthNav" class="flex items-center bg-white rounded-lg shadow-sm border border-slate-200 p-1">
+                <button id="prevMonth" class="p-2 hover:bg-slate-100 rounded-md transition-colors text-slate-600">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                </button>
+                <h2 id="monthYearDisplay" class="text-lg font-semibold w-40 text-center select-none">...</h2>
+                <button id="nextMonth" class="p-2 hover:bg-slate-100 rounded-md transition-colors text-slate-600">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Calendar View -->
+        <main id="calendarView" class="flex-grow flex flex-col bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <!-- Day Names -->
+            <div class="grid grid-cols-7 bg-slate-100 border-b border-slate-200 text-center py-3 font-semibold text-sm text-slate-600">
+                <div class="hidden sm:block">Sunday</div><div class="sm:hidden">Sun</div>
+                <div class="hidden sm:block">Monday</div><div class="sm:hidden">Mon</div>
+                <div class="hidden sm:block">Tuesday</div><div class="sm:hidden">Tue</div>
+                <div class="hidden sm:block">Wednesday</div><div class="sm:hidden">Wed</div>
+                <div class="hidden sm:block">Thursday</div><div class="sm:hidden">Thu</div>
+                <div class="hidden sm:block">Friday</div><div class="sm:hidden">Fri</div>
+                <div class="hidden sm:block">Saturday</div><div class="sm:hidden">Sat</div>
+            </div>
+            
+            <!-- Calendar Grid -->
+            <div id="calendarGrid" class="grid grid-cols-7 auto-rows-fr flex-grow bg-slate-50">
+                <!-- JS will populate cells here -->
+            </div>
+        </main>
+        
+        <!-- Legend -->
+        <div class="mt-6 flex flex-wrap justify-center gap-4 text-sm text-slate-600" id="legendContainer">
+            <!-- JS will populate legend -->
+        </div>
+
+        <!-- Reports View -->
+        <main id="reportsView" class="hidden flex-grow flex flex-col gap-6">
+            <!-- Stats Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                
+                <!-- Completion Stats -->
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                    <h3 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                        <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                        Completion Rate
+                    </h3>
+                    <p class="text-xs text-slate-500 mb-4" id="trackingPeriodText">Tracking data...</p>
+                    <div id="completionStats" class="space-y-4">
+                        <!-- JS populated -->
+                    </div>
+                </div>
+
+                <!-- Streak Stats -->
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                    <h3 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                        <svg class="w-5 h-5 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.879 16.121A3 3 0 1012.015 11L11 14H9c0 .768.293 1.536.879 2.121z"></path></svg>
+                        Current Streaks
+                    </h3>
+                    <div id="streakStats" class="space-y-4">
+                        <!-- JS populated -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Health Chart -->
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                 <h3 class="text-lg font-bold text-slate-800 mb-4">Monday Health Check-ins</h3>
+                 <div class="w-full h-72">
+                     <canvas id="healthChart"></canvas>
+                 </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Daily Habit Modal -->
+    <div id="dayModal" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-sm items-center justify-center p-4 z-50 opacity-0 transition-opacity duration-200">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden transform scale-95 transition-transform duration-200 flex flex-col max-h-[90vh]" id="dayModalContent">
+            
+            <!-- Modal Header -->
+            <div class="bg-slate-50 px-6 py-4 border-b border-slate-200 flex justify-between items-center">
+                <div>
+                    <h3 id="modalDateDisplay" class="text-xl font-bold text-slate-800"></h3>
+                    <p class="text-xs text-slate-500 mt-1">Tap toggles to record your progress.</p>
+                </div>
+                <button id="closeModal" class="text-slate-400 hover:text-slate-700 hover:bg-slate-200 p-2 rounded-full transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            
+            <!-- Modal Body -->
+            <div class="overflow-y-auto flex-grow p-6">
+                <!-- Weekly Check-in (Mondays Only) -->
+                <div id="mondayCheckin" class="hidden mb-8 p-4 bg-indigo-50 border border-indigo-100 rounded-xl">
+                    <h4 class="font-bold text-indigo-900 mb-3 flex items-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
+                        Weekly Monday Check-in
+                    </h4>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-indigo-800 mb-1">Weight</label>
+                            <div class="relative">
+                                <input type="number" id="inputWeight" step="0.1" class="w-full pl-3 pr-12 py-2 rounded-lg border border-indigo-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all" placeholder="Enter weight">
+                                <span class="absolute right-3 top-2.5 text-indigo-400 text-sm">lbs/kg</span>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-indigo-800 mb-1 flex justify-between">
+                                <span>Mental Health</span>
+                                <span id="mentalHealthVal" class="text-indigo-600 font-bold">5/10</span>
+                            </label>
+                            <input type="range" id="inputMentalHealth" min="1" max="10" value="5" class="w-full accent-indigo-600">
+                            <div class="flex justify-between text-xs text-indigo-500 mt-1">
+                                <span>Struggling</span>
+                                <span>Thriving</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Toggles -->
+                <div id="habitToggles" class="space-y-4">
+                    <!-- JS will populate toggles -->
+                </div>
+            </div>
+            
+        </div>
+    </div>
+
+    <!-- Error Toast -->
+    <div id="errorToast" class="fixed bottom-4 right-4 bg-red-600 text-white px-6 py-3 rounded-lg shadow-lg hidden transform translate-y-full transition-transform duration-300 z-50">
+        <span id="errorMessage">An error occurred.</span>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot, collection, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- Configuration & Globals ---
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'habit-tracker-default';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+            // Mock config to prevent crash if running outside standard env, though it won't connect.
+            apiKey: "mock-key", projectId: "mock-project"
+        };
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        const HABITS = [
+            { id: 'supplements', name: 'Supplements', icon: '💊', color: 'bg-blue-500', textCol: 'text-blue-600', ring: 'ring-blue-500' },
+            { id: 'food', name: 'Healthy Food', icon: '🥗', color: 'bg-emerald-500', textCol: 'text-emerald-600', ring: 'ring-emerald-500' },
+            { id: 'exercise', name: 'Exercise', icon: '🏃‍♂️', color: 'bg-orange-500', textCol: 'text-orange-600', ring: 'ring-orange-500' },
+            { id: 'creative', name: 'Creative Pursuit', icon: '🎨', color: 'bg-purple-500', textCol: 'text-purple-600', ring: 'ring-purple-500' },
+            { id: 'social', name: 'Social Connection', icon: '🤝', color: 'bg-pink-500', textCol: 'text-pink-600', ring: 'ring-pink-500' }
+        ];
+
+        // App State
+        let app, db, auth;
+        let currentUser = null;
+        let currentYear = new Date().getFullYear();
+        let currentMonth = new Date().getMonth(); // 0-indexed
+        let selectedDateStr = null;
+        let monthData = {}; // Format: { "YYYY-MM-DD": { supplements: true, ... } }
+        let unsubscribeSnapshot = null;
+        let isToggling = false; // Prevent spam clicking
+        let myChart = null; // Chart.js instance
+
+        // --- DOM Elements ---
+        const monthYearDisplay = document.getElementById('monthYearDisplay');
+        const calendarGrid = document.getElementById('calendarGrid');
+        const prevMonthBtn = document.getElementById('prevMonth');
+        const nextMonthBtn = document.getElementById('nextMonth');
+        const monthNav = document.getElementById('monthNav');
+        const connectionStatus = document.getElementById('connectionStatus');
+        
+        // Views
+        const tabCalendar = document.getElementById('tabCalendar');
+        const tabReports = document.getElementById('tabReports');
+        const calendarView = document.getElementById('calendarView');
+        const reportsView = document.getElementById('reportsView');
+        const legendContainer = document.getElementById('legendContainer');
+        
+        // Modal
+        const dayModal = document.getElementById('dayModal');
+        const dayModalContent = document.getElementById('dayModalContent');
+        const modalDateDisplay = document.getElementById('modalDateDisplay');
+        const closeModalBtn = document.getElementById('closeModal');
+        const habitTogglesContainer = document.getElementById('habitToggles');
+        
+        // Monday Inputs
+        const mondayCheckin = document.getElementById('mondayCheckin');
+        const inputWeight = document.getElementById('inputWeight');
+        const inputMentalHealth = document.getElementById('inputMentalHealth');
+        const mentalHealthVal = document.getElementById('mentalHealthVal');
+
+        const errorToast = document.getElementById('errorToast');
+        const errorMessage = document.getElementById('errorMessage');
+
+        // --- Initialization ---
+        async function init() {
+            renderLegend();
+            renderCalendarSkeleton(); // Draw UI immediately
+            
+            try {
+                app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+
+                // Authentication
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        currentUser = user;
+                        connectionStatus.textContent = 'Data synced • ' + user.uid.substring(0, 6);
+                        connectionStatus.classList.add('text-emerald-600');
+                        loadMonthData(currentYear, currentMonth);
+                    } else {
+                        currentUser = null;
+                        connectionStatus.textContent = 'Disconnected';
+                        connectionStatus.classList.remove('text-emerald-600');
+                        connectionStatus.classList.add('text-red-500');
+                    }
+                });
+
+            } catch (error) {
+                console.error("Firebase Initialization Error:", error);
+                showError("Failed to connect to database. Operating in view-only mode.");
+            }
+
+            // Event Listeners
+            prevMonthBtn.addEventListener('click', () => changeMonth(-1));
+            nextMonthBtn.addEventListener('click', () => changeMonth(1));
+            closeModalBtn.addEventListener('click', closeDayModal);
+            dayModal.addEventListener('click', (e) => { if (e.target === dayModal) closeDayModal(); });
+            
+            // View Tabs
+            tabCalendar.addEventListener('click', () => switchTab('calendar'));
+            tabReports.addEventListener('click', () => switchTab('reports'));
+
+            // Monday Input Listeners
+            inputMentalHealth.addEventListener('input', (e) => {
+                mentalHealthVal.textContent = `${e.target.value}/10`;
+            });
+            inputMentalHealth.addEventListener('change', (e) => saveCheckinData('mentalHealth', parseInt(e.target.value)));
+            inputWeight.addEventListener('change', (e) => saveCheckinData('weight', parseFloat(e.target.value)));
+
+            // Generate Toggles UI once, re-use
+            buildTogglesUI();
+        }
+
+        function switchTab(tab) {
+            if (tab === 'calendar') {
+                tabCalendar.classList.add('bg-white', 'shadow-sm', 'text-slate-800');
+                tabCalendar.classList.remove('text-slate-500', 'hover:text-slate-800', 'hover:bg-slate-200');
+                tabReports.classList.add('text-slate-500', 'hover:text-slate-800', 'hover:bg-slate-200');
+                tabReports.classList.remove('bg-white', 'shadow-sm', 'text-slate-800');
+                
+                calendarView.classList.remove('hidden');
+                legendContainer.classList.remove('hidden');
+                monthNav.classList.remove('hidden');
+                reportsView.classList.add('hidden');
+            } else {
+                tabReports.classList.add('bg-white', 'shadow-sm', 'text-slate-800');
+                tabReports.classList.remove('text-slate-500', 'hover:text-slate-800', 'hover:bg-slate-200');
+                tabCalendar.classList.add('text-slate-500', 'hover:text-slate-800', 'hover:bg-slate-200');
+                tabCalendar.classList.remove('bg-white', 'shadow-sm', 'text-slate-800');
+                
+                calendarView.classList.add('hidden');
+                legendContainer.classList.add('hidden');
+                monthNav.classList.add('hidden');
+                reportsView.classList.remove('hidden');
+                
+                loadReportsData();
+            }
+        }
+
+        // --- Data Fetching & Sync ---
+        function getMonthKey(year, month) {
+            // Returns YYYY-MM (e.g., 2026-11). Month is 0-indexed in JS Date, so we add 1.
+            const m = (month + 1).toString().padStart(2, '0');
+            return `${year}-${m}`;
+        }
+
+        function loadMonthData(year, month) {
+            if (!currentUser) return;
+            
+            const monthKey = getMonthKey(year, month);
+            
+            // Clean up previous listener
+            if (unsubscribeSnapshot) {
+                unsubscribeSnapshot();
+            }
+
+            // Path adhering to RULE 1: /artifacts/{appId}/users/{userId}/{collectionName}/{docId}
+            const docRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'monthly_habits', monthKey);
+            
+            // Path adhering to RULE 2 & 3: simple query, auth checked above, error callback provided
+            unsubscribeSnapshot = onSnapshot(docRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    monthData = docSnap.data();
+                } else {
+                    monthData = {}; // No data for this month yet
+                }
+                updateCalendarUI();
+                
+                // If modal is open for a day in this month, update it live
+                if (selectedDateStr && selectedDateStr.startsWith(monthKey)) {
+                    updateModalUI();
+                }
+            }, (error) => {
+                console.error("Snapshot Error:", error);
+                showError("Error syncing data.");
+            });
+        }
+
+        async function toggleHabit(habitId) {
+            if (!currentUser || !selectedDateStr || isToggling) return;
+            
+            isToggling = true;
+            try {
+                const monthKey = selectedDateStr.substring(0, 7); // YYYY-MM
+                const currentDayData = monthData[selectedDateStr] || {};
+                const newValue = !currentDayData[habitId];
+
+                // Optimistic UI update for snappy feel
+                monthData[selectedDateStr] = { ...currentDayData, [habitId]: newValue };
+                updateModalUI();
+                updateCalendarUI();
+
+                const docRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'monthly_habits', monthKey);
+                
+                // Using merge: true to only update the specific day's map within the month document
+                await setDoc(docRef, {
+                    [selectedDateStr]: {
+                        [habitId]: newValue
+                    }
+                }, { merge: true });
+
+            } catch (error) {
+                console.error("Error toggling habit:", error);
+                showError("Failed to save habit.");
+                // Revert optimistic update by reloading from snapshot (handled automatically via onSnapshot or manual trigger)
+                loadMonthData(currentYear, currentMonth); 
+            } finally {
+                isToggling = false;
+            }
+        }
+
+        async function saveCheckinData(field, value) {
+            if (!currentUser || !selectedDateStr || isNaN(value)) return;
+            try {
+                const monthKey = selectedDateStr.substring(0, 7);
+                // Optimistic Update
+                if(!monthData[selectedDateStr]) monthData[selectedDateStr] = {};
+                monthData[selectedDateStr][field] = value;
+
+                const docRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'monthly_habits', monthKey);
+                await setDoc(docRef, {
+                    [selectedDateStr]: {
+                        [field]: value
+                    }
+                }, { merge: true });
+            } catch (error) {
+                console.error("Error saving checkin:", error);
+                showError("Failed to save check-in data.");
+            }
+        }
+
+        // --- Reporting Logic ---
+        
+        async function loadReportsData() {
+            if (!currentUser) return;
+            const completionContainer = document.getElementById('completionStats');
+            const streakContainer = document.getElementById('streakStats');
+            
+            completionContainer.innerHTML = '<p class="text-slate-400 text-sm">Loading stats...</p>';
+            streakContainer.innerHTML = '<p class="text-slate-400 text-sm">Loading stats...</p>';
+
+            try {
+                // Fetch ALL historical data for the user to calculate accurate streaks and totals (RULE 1 & RULE 2)
+                const colRef = collection(db, 'artifacts', appId, 'users', currentUser.uid, 'monthly_habits');
+                const snapshot = await getDocs(colRef);
+                
+                let allData = {};
+                let checkinData = []; // for chart
+                let earliestDate = new Date(); // fallback to today
+
+                snapshot.forEach(docSnap => {
+                    const monthMap = docSnap.data();
+                    // Merge into a master object
+                    Object.assign(allData, monthMap);
+                });
+
+                const allDates = Object.keys(allData).sort();
+                if (allDates.length > 0) {
+                    earliestDate = new Date(allDates[0] + "T00:00:00");
+                }
+                
+                // Calculate possible days
+                const today = new Date();
+                today.setHours(0,0,0,0);
+                
+                // Calculate difference in days (inclusive)
+                const diffTime = Math.abs(today - earliestDate);
+                const possibleDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // +1 to include today
+
+                document.getElementById('trackingPeriodText').textContent = 
+                    `Based on ${possibleDays} day${possibleDays !== 1 ? 's' : ''} since ${earliestDate.toLocaleDateString(undefined, {month:'short', day:'numeric', year:'numeric'})}`;
+
+                // Calculate Stats
+                let completionHTML = '';
+                let streakHTML = '';
+
+                HABITS.forEach(habit => {
+                    let totalDone = 0;
+                    let currentStreak = 0;
+                    let isStreakActive = true;
+
+                    // Iterate backwards from today to calculate streak
+                    const tempDate = new Date(today);
+                    for (let i = 0; i < possibleDays; i++) {
+                        // Format date YYYY-MM-DD
+                        const dStr = `${tempDate.getFullYear()}-${(tempDate.getMonth()+1).toString().padStart(2, '0')}-${tempDate.getDate().toString().padStart(2, '0')}`;
+                        
+                        const dayData = allData[dStr];
+                        const isDone = dayData && dayData[habit.id] === true;
+
+                        // Total count
+                        if (isDone) totalDone++;
+
+                        // Streak Logic
+                        if (isStreakActive) {
+                            if (isDone) {
+                                currentStreak++;
+                            } else {
+                                // If not done, but it's today, we give them a pass (they might do it later)
+                                // Only break streak if it's a past day.
+                                if (i > 0) {
+                                    isStreakActive = false;
+                                }
+                            }
+                        }
+
+                        // Move back one day
+                        tempDate.setDate(tempDate.getDate() - 1);
+                    }
+
+                    const completionPercent = possibleDays > 0 ? Math.round((totalDone / possibleDays) * 100) : 0;
+
+                    completionHTML += `
+                        <div>
+                            <div class="flex justify-between text-sm mb-1">
+                                <span class="font-medium text-slate-700 flex items-center gap-2"><span class="w-3 h-3 rounded-full ${habit.color}"></span>${habit.name}</span>
+                                <span class="text-slate-500 font-semibold">${totalDone} / ${possibleDays} <span class="text-slate-400 font-normal">(${completionPercent}%)</span></span>
+                            </div>
+                            <div class="w-full bg-slate-100 rounded-full h-2.5">
+                                <div class="${habit.color} h-2.5 rounded-full" style="width: ${completionPercent}%"></div>
+                            </div>
+                        </div>
+                    `;
+
+                    streakHTML += `
+                        <div class="flex justify-between items-center p-3 rounded-lg border border-slate-100 bg-slate-50">
+                            <span class="font-medium text-slate-700 flex items-center gap-2">
+                                <span>${habit.icon}</span> ${habit.name}
+                            </span>
+                            <div class="flex items-center gap-1.5">
+                                <span class="text-2xl font-bold ${currentStreak > 0 ? 'text-orange-500' : 'text-slate-400'}">${currentStreak}</span>
+                                <span class="text-xs text-slate-500 uppercase font-semibold">Days</span>
+                                ${currentStreak > 2 ? '<span class="text-xl">🔥</span>' : ''}
+                            </div>
+                        </div>
+                    `;
+                });
+
+                completionContainer.innerHTML = completionHTML;
+                streakContainer.innerHTML = streakHTML;
+
+                // Extract Check-in Data for Chart
+                allDates.forEach(dateStr => {
+                    const dayData = allData[dateStr];
+                    if (dayData && (dayData.weight || dayData.mentalHealth)) {
+                        checkinData.push({
+                            date: dateStr,
+                            weight: dayData.weight || null,
+                            mentalHealth: dayData.mentalHealth || null
+                        });
+                    }
+                });
+                
+                renderChart(checkinData);
+
+            } catch (error) {
+                console.error("Error generating reports:", error);
+                completionContainer.innerHTML = '<p class="text-red-500 text-sm">Failed to load data.</p>';
+            }
+        }
+
+        function renderChart(data) {
+            const ctx = document.getElementById('healthChart').getContext('2d');
+            
+            if (myChart) {
+                myChart.destroy();
+            }
+
+            if (data.length === 0) {
+                 ctx.font = '14px sans-serif';
+                 ctx.textAlign = 'center';
+                 ctx.fillStyle = '#94a3b8';
+                 ctx.fillText('No check-in data available yet.', ctx.canvas.width / 2, ctx.canvas.height / 2);
+                 return;
+            }
+
+            const labels = data.map(d => {
+                const [y, m, day] = d.date.split('-');
+                return `${m}/${day}`; // Short date
+            });
+            const weightData = data.map(d => d.weight);
+            const mentalData = data.map(d => d.mentalHealth);
+
+            myChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Weight',
+                            data: weightData,
+                            borderColor: '#3b82f6', // blue-500
+                            backgroundColor: '#3b82f6',
+                            yAxisID: 'y',
+                            tension: 0.3,
+                            spanGaps: true
+                        },
+                        {
+                            label: 'Mental Health (1-10)',
+                            data: mentalData,
+                            borderColor: '#8b5cf6', // violet-500
+                            backgroundColor: '#8b5cf6',
+                            yAxisID: 'y1',
+                            tension: 0.3,
+                            spanGaps: true
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    scales: {
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            title: { display: true, text: 'Weight' }
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            min: 0,
+                            max: 10,
+                            title: { display: true, text: 'Mental Health' },
+                            grid: { drawOnChartArea: false } // only draw grid lines for one axis
+                        },
+                        x: {
+                            grid: { display: false }
+                        }
+                    },
+                    plugins: {
+                        legend: { position: 'bottom' }
+                    }
+                }
+            });
+        }
+
+
+        // --- UI Rendering ---
+        
+        function renderLegend() {
+            legendContainer.innerHTML = HABITS.map(h => `
+                <div class="flex items-center gap-1.5">
+                    <div class="w-3 h-3 rounded-full ${h.color}"></div>
+                    <span>${h.name}</span>
+                </div>
+            `).join('');
+        }
+
+        function changeMonth(delta) {
+            currentMonth += delta;
+            if (currentMonth > 11) {
+                currentMonth = 0;
+                currentYear++;
+            } else if (currentMonth < 0) {
+                currentMonth = 11;
+                currentYear--;
+            }
+            renderCalendarSkeleton();
+            if (currentUser) {
+                loadMonthData(currentYear, currentMonth);
+            }
+        }
+
+        function renderCalendarSkeleton() {
+            const date = new Date(currentYear, currentMonth, 1);
+            
+            // Format Title
+            const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+            monthYearDisplay.textContent = `${monthNames[currentMonth]} ${currentYear}`;
+
+            calendarGrid.innerHTML = '';
+            
+            const firstDayIndex = date.getDay(); // 0 (Sun) to 6 (Sat)
+            const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+            
+            // Padding for previous month days
+            for (let i = 0; i < firstDayIndex; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'calendar-cell bg-slate-50/50';
+                calendarGrid.appendChild(cell);
+            }
+            
+            // Actual days
+            const today = new Date();
+            const isCurrentMonth = today.getFullYear() === currentYear && today.getMonth() === currentMonth;
+
+            for (let i = 1; i <= daysInMonth; i++) {
+                const dateStr = `${currentYear}-${(currentMonth + 1).toString().padStart(2, '0')}-${i.toString().padStart(2, '0')}`;
+                const isToday = isCurrentMonth && today.getDate() === i;
+
+                const cell = document.createElement('div');
+                cell.className = `calendar-cell relative bg-white p-1 sm:p-2 cursor-pointer hover:bg-blue-50 transition-colors group ${isToday ? 'ring-2 ring-inset ring-blue-400 z-10' : ''}`;
+                cell.dataset.date = dateStr;
+                cell.addEventListener('click', () => openDayModal(dateStr));
+                
+                // Day Number
+                const dayNum = document.createElement('div');
+                dayNum.className = `text-sm font-semibold w-7 h-7 flex items-center justify-center rounded-full ${isToday ? 'bg-blue-500 text-white' : 'text-slate-700 group-hover:text-blue-600'}`;
+                dayNum.textContent = i;
+                
+                // Indicators Container
+                const indicators = document.createElement('div');
+                indicators.className = 'mt-2 flex flex-wrap gap-1 px-1 justify-start';
+                indicators.id = `indicators-${dateStr}`;
+                
+                cell.appendChild(dayNum);
+                cell.appendChild(indicators);
+                calendarGrid.appendChild(cell);
+            }
+            
+            // Fill remaining grid spaces (up to 42 cells total for 6 rows)
+            const totalCellsRendered = firstDayIndex + daysInMonth;
+            const remainingCells = (Math.ceil(totalCellsRendered / 7) * 7) - totalCellsRendered;
+            for(let i=0; i<remainingCells; i++){
+                const cell = document.createElement('div');
+                cell.className = 'calendar-cell bg-slate-50/50';
+                calendarGrid.appendChild(cell);
+            }
+        }
+
+        function updateCalendarUI() {
+            // Apply monthData to the indicators on the calendar
+            document.querySelectorAll('.calendar-cell[data-date]').forEach(cell => {
+                const dateStr = cell.dataset.date;
+                const indicatorsContainer = document.getElementById(`indicators-${dateStr}`);
+                if (!indicatorsContainer) return;
+                
+                indicatorsContainer.innerHTML = '';
+                const dayData = monthData[dateStr] || {};
+                
+                HABITS.forEach(habit => {
+                    if (dayData[habit.id]) {
+                        const dot = document.createElement('div');
+                        dot.className = `w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full ${habit.color} shadow-sm`;
+                        dot.title = habit.name;
+                        indicatorsContainer.appendChild(dot);
+                    }
+                });
+            });
+        }
+
+        // --- Modal Interactions ---
+
+        function buildTogglesUI() {
+            habitTogglesContainer.innerHTML = HABITS.map(h => `
+                <div class="flex items-center justify-between p-4 rounded-xl border border-slate-100 bg-white shadow-sm hover:shadow-md transition-shadow cursor-pointer habit-row" data-habit="${h.id}">
+                    <div class="flex items-center gap-4">
+                        <div class="text-2xl w-10 h-10 flex items-center justify-center rounded-full bg-slate-100">${h.icon}</div>
+                        <div>
+                            <p class="font-semibold text-slate-800">${h.name}</p>
+                        </div>
+                    </div>
+                    <div class="relative inline-block w-12 h-6 align-middle select-none transition duration-200 ease-in">
+                        <input type="checkbox" id="toggle-${h.id}" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 border-slate-200 appearance-none cursor-pointer transition-all duration-200 z-10 top-0 left-0 pointer-events-none"/>
+                        <label for="toggle-${h.id}" class="toggle-label block overflow-hidden h-6 rounded-full bg-slate-200 cursor-pointer transition-colors duration-200"></label>
+                    </div>
+                </div>
+            `).join('');
+
+            // Attach click listeners to rows to toggle
+            document.querySelectorAll('.habit-row').forEach(row => {
+                row.addEventListener('click', (e) => {
+                    // Prevent double firing if clicking directly on the input/label which we bypassed with pointer-events-none anyway
+                    toggleHabit(row.dataset.habit);
+                });
+            });
+        }
+
+        function openDayModal(dateStr) {
+            if(!currentUser) {
+                showError("Please wait for database connection.");
+                return;
+            }
+            selectedDateStr = dateStr;
+            
+            // Format Date for display (e.g., Monday, Nov 2, 2026)
+            const [y, m, d] = dateStr.split('-');
+            const dateObj = new Date(y, parseInt(m)-1, d);
+            const options = { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' };
+            modalDateDisplay.textContent = dateObj.toLocaleDateString(undefined, options);
+
+            // Handle Monday Check-in visibility
+            const isMonday = dateObj.getDay() === 1; // 0 is Sun, 1 is Mon
+            if (isMonday) {
+                mondayCheckin.classList.remove('hidden');
+                const dayData = monthData[selectedDateStr] || {};
+                
+                inputWeight.value = dayData.weight || '';
+                const mhVal = dayData.mentalHealth || 5;
+                inputMentalHealth.value = mhVal;
+                mentalHealthVal.textContent = `${mhVal}/10`;
+            } else {
+                mondayCheckin.classList.add('hidden');
+            }
+
+            updateModalUI();
+            
+            // Show modal
+            dayModal.classList.remove('hidden');
+            dayModal.classList.add('flex');
+            // Small delay to allow display block to apply before animating opacity
+            setTimeout(() => {
+                dayModal.classList.remove('opacity-0');
+                dayModalContent.classList.remove('scale-95');
+                dayModalContent.classList.add('scale-100');
+            }, 10);
+        }
+
+        function updateModalUI() {
+            if (!selectedDateStr) return;
+            const dayData = monthData[selectedDateStr] || {};
+            
+            HABITS.forEach(h => {
+                const isDone = !!dayData[h.id];
+                const checkbox = document.getElementById(`toggle-${h.id}`);
+                const row = checkbox.closest('.habit-row');
+                
+                checkbox.checked = isDone;
+                
+                // Visual enhancements on the row
+                if(isDone) {
+                    row.classList.add('border-slate-300', 'bg-slate-50/50');
+                    row.classList.remove('border-slate-100', 'bg-white');
+                } else {
+                    row.classList.remove('border-slate-300', 'bg-slate-50/50');
+                    row.classList.add('border-slate-100', 'bg-white');
+                }
+            });
+        }
+
+        function closeDayModal() {
+            dayModal.classList.add('opacity-0');
+            dayModalContent.classList.remove('scale-100');
+            dayModalContent.classList.add('scale-95');
+            setTimeout(() => {
+                dayModal.classList.add('hidden');
+                dayModal.classList.remove('flex');
+                selectedDateStr = null;
+            }, 200); // matches duration-200
+        }
+
+        function showError(msg) {
+            errorMessage.textContent = msg;
+            errorToast.classList.remove('hidden', 'translate-y-full');
+            setTimeout(() => {
+                errorToast.classList.add('translate-y-full');
+                setTimeout(() => errorToast.classList.add('hidden'), 300);
+            }, 4000);
+        }
+
+        // Boot
+        window.addEventListener('DOMContentLoaded', init);
+
+    </script>
+</body>
+</html>
