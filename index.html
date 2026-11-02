@@ -196,10 +196,15 @@
 
         // --- Configuration & Globals ---
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'habit-tracker-default';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
-            // Mock config to prevent crash if running outside standard env, though it won't connect.
-            apiKey: "mock-key", projectId: "mock-project"
-        };
+        let firebaseConfig = null;
+        try {
+            if (typeof __firebase_config !== 'undefined') {
+                firebaseConfig = JSON.parse(__firebase_config);
+            }
+        } catch (e) {
+            console.warn("Failed to parse __firebase_config");
+        }
+        
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
         const HABITS = [
@@ -257,14 +262,26 @@
             renderLegend();
             renderCalendarSkeleton(); // Draw UI immediately
             
+            if (!firebaseConfig) {
+                showError("Database configuration is missing.");
+                connectionStatus.textContent = 'Config Error';
+                connectionStatus.classList.add('text-red-500');
+                return;
+            }
+
             try {
                 app = initializeApp(firebaseConfig);
                 auth = getAuth(app);
                 db = getFirestore(app);
 
-                // Authentication
+                // Authentication: Strict cloud connection with robust anonymous fallback
                 if (initialAuthToken) {
-                    await signInWithCustomToken(auth, initialAuthToken);
+                    try {
+                        await signInWithCustomToken(auth, initialAuthToken);
+                    } catch (tokenError) {
+                        console.warn("Provided auth token invalid/expired, falling back to anonymous cloud session:", tokenError);
+                        await signInAnonymously(auth);
+                    }
                 } else {
                     await signInAnonymously(auth);
                 }
@@ -273,6 +290,7 @@
                     if (user) {
                         currentUser = user;
                         connectionStatus.textContent = 'Data synced • ' + user.uid.substring(0, 6);
+                        connectionStatus.classList.remove('text-slate-500', 'text-red-500', 'text-amber-500');
                         connectionStatus.classList.add('text-emerald-600');
                         loadMonthData(currentYear, currentMonth);
                     } else {
@@ -284,8 +302,11 @@
                 });
 
             } catch (error) {
-                console.error("Firebase Initialization Error:", error);
-                showError("Failed to connect to database. Operating in view-only mode.");
+                console.error("Critical Firebase Error:", error);
+                connectionStatus.textContent = 'Cloud Connection Failed';
+                connectionStatus.classList.add('text-red-500');
+                showError("Failed to connect to database: " + error.message);
+                return; // Halt execution. No local fallback!
             }
 
             // Event Listeners
@@ -343,7 +364,7 @@
         }
 
         function loadMonthData(year, month) {
-            if (!currentUser) return;
+            if (!currentUser || !db) return;
             
             const monthKey = getMonthKey(year, month);
             
@@ -388,20 +409,22 @@
                 updateModalUI();
                 updateCalendarUI();
 
-                const docRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'monthly_habits', monthKey);
-                
-                // Using merge: true to only update the specific day's map within the month document
-                await setDoc(docRef, {
-                    [selectedDateStr]: {
-                        [habitId]: newValue
-                    }
-                }, { merge: true });
+                if (db) {
+                    const docRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'monthly_habits', monthKey);
+                    
+                    // Using merge: true to only update the specific day's map within the month document
+                    await setDoc(docRef, {
+                        [selectedDateStr]: {
+                            [habitId]: newValue
+                        }
+                    }, { merge: true });
+                }
 
             } catch (error) {
                 console.error("Error toggling habit:", error);
                 showError("Failed to save habit.");
-                // Revert optimistic update by reloading from snapshot (handled automatically via onSnapshot or manual trigger)
-                loadMonthData(currentYear, currentMonth); 
+                // Revert optimistic update by reloading from snapshot
+                if (db) loadMonthData(currentYear, currentMonth); 
             } finally {
                 isToggling = false;
             }
@@ -415,12 +438,14 @@
                 if(!monthData[selectedDateStr]) monthData[selectedDateStr] = {};
                 monthData[selectedDateStr][field] = value;
 
-                const docRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'monthly_habits', monthKey);
-                await setDoc(docRef, {
-                    [selectedDateStr]: {
-                        [field]: value
-                    }
-                }, { merge: true });
+                if (db) {
+                    const docRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'monthly_habits', monthKey);
+                    await setDoc(docRef, {
+                        [selectedDateStr]: {
+                            [field]: value
+                        }
+                    }, { merge: true });
+                }
             } catch (error) {
                 console.error("Error saving checkin:", error);
                 showError("Failed to save check-in data.");
@@ -438,19 +463,24 @@
             streakContainer.innerHTML = '<p class="text-slate-400 text-sm">Loading stats...</p>';
 
             try {
-                // Fetch ALL historical data for the user to calculate accurate streaks and totals (RULE 1 & RULE 2)
-                const colRef = collection(db, 'artifacts', appId, 'users', currentUser.uid, 'monthly_habits');
-                const snapshot = await getDocs(colRef);
-                
                 let allData = {};
                 let checkinData = []; // for chart
                 let earliestDate = new Date(); // fallback to today
 
-                snapshot.forEach(docSnap => {
-                    const monthMap = docSnap.data();
-                    // Merge into a master object
-                    Object.assign(allData, monthMap);
-                });
+                if (db) {
+                    // Fetch ALL historical data for the user to calculate accurate streaks and totals
+                    const colRef = collection(db, 'artifacts', appId, 'users', currentUser.uid, 'monthly_habits');
+                    const snapshot = await getDocs(colRef);
+                    
+                    snapshot.forEach(docSnap => {
+                        const monthMap = docSnap.data();
+                        // Merge into a master object
+                        Object.assign(allData, monthMap);
+                    });
+                } else {
+                    // Local session
+                    allData = { ...monthData };
+                }
 
                 const allDates = Object.keys(allData).sort();
                 if (allDates.length > 0) {
