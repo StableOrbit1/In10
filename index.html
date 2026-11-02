@@ -46,7 +46,10 @@
         <header class="flex flex-col sm:flex-row justify-between items-center mb-8 gap-4">
             <div>
                 <h1 class="text-3xl font-extrabold tracking-tight text-slate-900">Life Tracker</h1>
-                <p class="text-sm text-slate-500 mt-1" id="connectionStatus">Connecting to database...</p>
+                <button id="connectionStatusBtn" class="text-left group flex items-center gap-1.5 mt-1 focus:outline-none" title="Click for Database Diagnostics">
+                    <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse" id="statusDot"></span>
+                    <span class="text-sm text-slate-500 group-hover:underline" id="connectionStatus">Connecting to database...</span>
+                </button>
             </div>
             
             <!-- View Tabs -->
@@ -184,6 +187,29 @@
         </div>
     </div>
 
+    <!-- Database Diagnostics Modal -->
+    <div id="diagModal" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-sm items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="bg-slate-50 px-6 py-4 border-b border-slate-200 flex justify-between items-center">
+                <h3 class="text-lg font-bold text-slate-800">Database Diagnostics</h3>
+                <button id="closeDiagModal" class="text-slate-400 hover:text-slate-700 hover:bg-slate-200 p-2 rounded-full transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <div class="p-6 overflow-y-auto space-y-3 text-sm font-mono bg-slate-900 text-slate-100">
+                <div><span class="text-slate-400">Service:</span> Google Firebase (Cloud Firestore)</div>
+                <div><span class="text-slate-400">Project ID:</span> <span id="diagProject" class="text-emerald-400">Checking...</span></div>
+                <div><span class="text-slate-400">App ID:</span> <span id="diagAppId" class="text-blue-400">Checking...</span></div>
+                <div><span class="text-slate-400">User UID:</span> <span id="diagUid" class="text-purple-400">Not signed in</span></div>
+                <div><span class="text-slate-400">Firestore Path:</span> <span id="diagPath" class="text-amber-300 break-all">...</span></div>
+                <div><span class="text-slate-400">Last Status/Error:</span> <span id="diagError" class="text-red-400 break-words">None</span></div>
+            </div>
+            <div class="bg-slate-50 px-6 py-3 border-t border-slate-200 flex justify-end gap-2">
+                <button id="retryAuthBtn" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition-colors">Retry Connection</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Error Toast -->
     <div id="errorToast" class="fixed bottom-4 right-4 bg-red-600 text-white px-6 py-3 rounded-lg shadow-lg hidden transform translate-y-full transition-transform duration-300 z-50">
         <span id="errorMessage">An error occurred.</span>
@@ -197,12 +223,18 @@
         // --- Configuration & Globals ---
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'habit-tracker-default';
         let firebaseConfig = null;
+        let lastDiagError = 'None';
+
         try {
-            if (typeof __firebase_config !== 'undefined') {
-                firebaseConfig = JSON.parse(__firebase_config);
+            if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+                // Safely handle both stringified JSON and pre-parsed configuration objects
+                firebaseConfig = typeof __firebase_config === 'string' 
+                    ? JSON.parse(__firebase_config) 
+                    : __firebase_config;
             }
         } catch (e) {
-            console.warn("Failed to parse __firebase_config");
+            lastDiagError = "Config parse error: " + e.message;
+            console.warn("Failed to parse __firebase_config", e);
         }
         
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
@@ -218,6 +250,7 @@
         // App State
         let app, db, auth;
         let currentUser = null;
+        let authPromise = null;
         let currentYear = new Date().getFullYear();
         let currentMonth = new Date().getMonth(); // 0-indexed
         let selectedDateStr = null;
@@ -233,6 +266,8 @@
         const nextMonthBtn = document.getElementById('nextMonth');
         const monthNav = document.getElementById('monthNav');
         const connectionStatus = document.getElementById('connectionStatus');
+        const connectionStatusBtn = document.getElementById('connectionStatusBtn');
+        const statusDot = document.getElementById('statusDot');
         
         // Views
         const tabCalendar = document.getElementById('tabCalendar');
@@ -247,6 +282,11 @@
         const modalDateDisplay = document.getElementById('modalDateDisplay');
         const closeModalBtn = document.getElementById('closeModal');
         const habitTogglesContainer = document.getElementById('habitToggles');
+
+        // Diagnostics Modal
+        const diagModal = document.getElementById('diagModal');
+        const closeDiagModalBtn = document.getElementById('closeDiagModal');
+        const retryAuthBtn = document.getElementById('retryAuthBtn');
         
         // Monday Inputs
         const mondayCheckin = document.getElementById('mondayCheckin');
@@ -259,75 +299,137 @@
 
         // --- Initialization ---
         async function init() {
+            // 1. Always bind UI & render skeleton FIRST so the interface never locks up
             renderLegend();
-            renderCalendarSkeleton(); // Draw UI immediately
-            
-            if (!firebaseConfig) {
-                showError("Database configuration is missing.");
-                connectionStatus.textContent = 'Config Error';
-                connectionStatus.classList.add('text-red-500');
-                return;
-            }
+            renderCalendarSkeleton();
+            buildTogglesUI();
 
-            try {
-                app = initializeApp(firebaseConfig);
-                auth = getAuth(app);
-                db = getFirestore(app);
-
-                // Authentication: Strict cloud connection with robust anonymous fallback
-                if (initialAuthToken) {
-                    try {
-                        await signInWithCustomToken(auth, initialAuthToken);
-                    } catch (tokenError) {
-                        console.warn("Provided auth token invalid/expired, falling back to anonymous cloud session:", tokenError);
-                        await signInAnonymously(auth);
-                    }
-                } else {
-                    await signInAnonymously(auth);
-                }
-
-                onAuthStateChanged(auth, (user) => {
-                    if (user) {
-                        currentUser = user;
-                        connectionStatus.textContent = 'Data synced • ' + user.uid.substring(0, 6);
-                        connectionStatus.classList.remove('text-slate-500', 'text-red-500', 'text-amber-500');
-                        connectionStatus.classList.add('text-emerald-600');
-                        loadMonthData(currentYear, currentMonth);
-                    } else {
-                        currentUser = null;
-                        connectionStatus.textContent = 'Disconnected';
-                        connectionStatus.classList.remove('text-emerald-600');
-                        connectionStatus.classList.add('text-red-500');
-                    }
-                });
-
-            } catch (error) {
-                console.error("Critical Firebase Error:", error);
-                connectionStatus.textContent = 'Cloud Connection Failed';
-                connectionStatus.classList.add('text-red-500');
-                showError("Failed to connect to database: " + error.message);
-                return; // Halt execution. No local fallback!
-            }
-
-            // Event Listeners
             prevMonthBtn.addEventListener('click', () => changeMonth(-1));
             nextMonthBtn.addEventListener('click', () => changeMonth(1));
             closeModalBtn.addEventListener('click', closeDayModal);
             dayModal.addEventListener('click', (e) => { if (e.target === dayModal) closeDayModal(); });
             
-            // View Tabs
             tabCalendar.addEventListener('click', () => switchTab('calendar'));
             tabReports.addEventListener('click', () => switchTab('reports'));
 
-            // Monday Input Listeners
             inputMentalHealth.addEventListener('input', (e) => {
                 mentalHealthVal.textContent = `${e.target.value}/10`;
             });
             inputMentalHealth.addEventListener('change', (e) => saveCheckinData('mentalHealth', parseInt(e.target.value)));
             inputWeight.addEventListener('change', (e) => saveCheckinData('weight', parseFloat(e.target.value)));
 
-            // Generate Toggles UI once, re-use
-            buildTogglesUI();
+            connectionStatusBtn.addEventListener('click', openDiagnostics);
+            closeDiagModalBtn.addEventListener('click', () => diagModal.classList.add('hidden'));
+            retryAuthBtn.addEventListener('click', () => {
+                diagModal.classList.add('hidden');
+                connectToFirebase();
+            });
+
+            // 2. Connect to Firebase
+            await connectToFirebase();
+        }
+
+        function setStatusUI(state, text) {
+            connectionStatus.textContent = text;
+            connectionStatus.className = 'text-sm group-hover:underline ';
+            statusDot.className = 'w-2 h-2 rounded-full ';
+
+            if (state === 'connected') {
+                connectionStatus.classList.add('text-emerald-600');
+                statusDot.classList.add('bg-emerald-500');
+            } else if (state === 'error') {
+                connectionStatus.classList.add('text-red-500');
+                statusDot.classList.add('bg-red-500');
+            } else {
+                connectionStatus.classList.add('text-slate-500');
+                statusDot.classList.add('bg-amber-400', 'animate-pulse');
+            }
+        }
+
+        async function connectToFirebase() {
+            if (!firebaseConfig) {
+                lastDiagError = "Global __firebase_config is undefined in this environment.";
+                setStatusUI('error', 'Config Missing (Click for info)');
+                showError("Database configuration is missing.");
+                return;
+            }
+
+            setStatusUI('connecting', 'Connecting to database...');
+
+            try {
+                if (!app) {
+                    app = initializeApp(firebaseConfig);
+                    auth = getAuth(app);
+                    db = getFirestore(app);
+
+                    // Register listener BEFORE calling sign-in to prevent race conditions
+                    onAuthStateChanged(auth, (user) => {
+                        if (user) {
+                            currentUser = user;
+                            lastDiagError = 'None';
+                            setStatusUI('connected', `Cloud Synced • ${user.uid}`);
+                            loadMonthData(currentYear, currentMonth);
+                        }
+                    });
+                }
+
+                // Perform authentication and capture the returned user immediately
+                authPromise = (async () => {
+                    if (initialAuthToken) {
+                        try {
+                            const cred = await signInWithCustomToken(auth, initialAuthToken);
+                            return cred.user;
+                        } catch (tokenError) {
+                            console.warn("Custom token rejected, signing in anonymously:", tokenError);
+                            const cred = await signInAnonymously(auth);
+                            return cred.user;
+                        }
+                    } else {
+                        const cred = await signInAnonymously(auth);
+                        return cred.user;
+                    }
+                })();
+
+                const user = await authPromise;
+                if (user) {
+                    currentUser = user;
+                    setStatusUI('connected', `Cloud Synced • ${user.uid}`);
+                    loadMonthData(currentYear, currentMonth);
+                }
+
+            } catch (error) {
+                console.error("Critical Firebase Error:", error);
+                lastDiagError = `${error.code || 'Error'}: ${error.message}`;
+                setStatusUI('error', 'Connection Failed (Click to diagnose)');
+                showError("Database Error: " + (error.code || error.message));
+            }
+        }
+
+        async function ensureAuthenticated() {
+            if (currentUser) return currentUser;
+            if (auth && auth.currentUser) {
+                currentUser = auth.currentUser;
+                return currentUser;
+            }
+            if (authPromise) {
+                try {
+                    currentUser = await authPromise;
+                    if (currentUser) return currentUser;
+                } catch (e) { /* handled below */ }
+            }
+            await connectToFirebase();
+            return currentUser;
+        }
+
+        function openDiagnostics() {
+            document.getElementById('diagProject').textContent = firebaseConfig?.projectId || 'Not found';
+            document.getElementById('diagAppId').textContent = appId;
+            document.getElementById('diagUid').textContent = currentUser ? currentUser.uid : 'Not signed in';
+            const uidPart = currentUser ? currentUser.uid : '{userId}';
+            document.getElementById('diagPath').textContent = `/artifacts/${appId}/users/${uidPart}/monthly_habits/${getMonthKey(currentYear, currentMonth)}`;
+            document.getElementById('diagError').textContent = lastDiagError;
+            diagModal.classList.remove('hidden');
+            diagModal.classList.add('flex');
         }
 
         function switchTab(tab) {
@@ -391,15 +493,22 @@
                 }
             }, (error) => {
                 console.error("Snapshot Error:", error);
-                showError("Error syncing data.");
+                lastDiagError = `Firestore Read Error (${error.code}): ${error.message}`;
+                showError("Error syncing data: " + (error.code || error.message));
             });
         }
 
         async function toggleHabit(habitId) {
-            if (!currentUser || !selectedDateStr || isToggling) return;
+            if (!selectedDateStr || isToggling) return;
             
             isToggling = true;
             try {
+                const user = await ensureAuthenticated();
+                if (!user || !db) {
+                    showError("Cannot save: Database is not connected.");
+                    return;
+                }
+
                 const monthKey = selectedDateStr.substring(0, 7); // YYYY-MM
                 const currentDayData = monthData[selectedDateStr] || {};
                 const newValue = !currentDayData[habitId];
@@ -409,45 +518,47 @@
                 updateModalUI();
                 updateCalendarUI();
 
-                if (db) {
-                    const docRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'monthly_habits', monthKey);
-                    
-                    // Using merge: true to only update the specific day's map within the month document
-                    await setDoc(docRef, {
-                        [selectedDateStr]: {
-                            [habitId]: newValue
-                        }
-                    }, { merge: true });
-                }
+                const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'monthly_habits', monthKey);
+                
+                // Using merge: true to only update the specific day's map within the month document
+                await setDoc(docRef, {
+                    [selectedDateStr]: {
+                        [habitId]: newValue
+                    }
+                }, { merge: true });
 
             } catch (error) {
                 console.error("Error toggling habit:", error);
-                showError("Failed to save habit.");
-                // Revert optimistic update by reloading from snapshot
-                if (db) loadMonthData(currentYear, currentMonth); 
+                lastDiagError = `Firestore Write Error (${error.code}): ${error.message}`;
+                showError("Failed to save to database: " + (error.code || error.message));
+                if (db && currentUser) loadMonthData(currentYear, currentMonth); 
             } finally {
                 isToggling = false;
             }
         }
 
         async function saveCheckinData(field, value) {
-            if (!currentUser || !selectedDateStr || isNaN(value)) return;
+            if (!selectedDateStr || isNaN(value)) return;
             try {
+                const user = await ensureAuthenticated();
+                if (!user || !db) {
+                    showError("Cannot save check-in: Database not connected.");
+                    return;
+                }
+
                 const monthKey = selectedDateStr.substring(0, 7);
-                // Optimistic Update
                 if(!monthData[selectedDateStr]) monthData[selectedDateStr] = {};
                 monthData[selectedDateStr][field] = value;
 
-                if (db) {
-                    const docRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'monthly_habits', monthKey);
-                    await setDoc(docRef, {
-                        [selectedDateStr]: {
-                            [field]: value
-                        }
-                    }, { merge: true });
-                }
+                const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'monthly_habits', monthKey);
+                await setDoc(docRef, {
+                    [selectedDateStr]: {
+                        [field]: value
+                    }
+                }, { merge: true });
             } catch (error) {
                 console.error("Error saving checkin:", error);
+                lastDiagError = `Firestore Write Error (${error.code}): ${error.message}`;
                 showError("Failed to save check-in data.");
             }
         }
@@ -455,32 +566,32 @@
         // --- Reporting Logic ---
         
         async function loadReportsData() {
-            if (!currentUser) return;
             const completionContainer = document.getElementById('completionStats');
             const streakContainer = document.getElementById('streakStats');
             
-            completionContainer.innerHTML = '<p class="text-slate-400 text-sm">Loading stats...</p>';
-            streakContainer.innerHTML = '<p class="text-slate-400 text-sm">Loading stats...</p>';
+            completionContainer.innerHTML = '<p class="text-slate-400 text-sm">Loading stats from cloud...</p>';
+            streakContainer.innerHTML = '<p class="text-slate-400 text-sm">Loading stats from cloud...</p>';
+
+            const user = await ensureAuthenticated();
+            if (!user || !db) {
+                completionContainer.innerHTML = '<p class="text-red-500 text-sm">Database disconnected. Click the status bar at the top to diagnose.</p>';
+                streakContainer.innerHTML = '<p class="text-red-500 text-sm">Database disconnected.</p>';
+                return;
+            }
 
             try {
                 let allData = {};
                 let checkinData = []; // for chart
                 let earliestDate = new Date(); // fallback to today
 
-                if (db) {
-                    // Fetch ALL historical data for the user to calculate accurate streaks and totals
-                    const colRef = collection(db, 'artifacts', appId, 'users', currentUser.uid, 'monthly_habits');
-                    const snapshot = await getDocs(colRef);
-                    
-                    snapshot.forEach(docSnap => {
-                        const monthMap = docSnap.data();
-                        // Merge into a master object
-                        Object.assign(allData, monthMap);
-                    });
-                } else {
-                    // Local session
-                    allData = { ...monthData };
-                }
+                // Fetch ALL historical data for the user to calculate accurate streaks and totals
+                const colRef = collection(db, 'artifacts', appId, 'users', user.uid, 'monthly_habits');
+                const snapshot = await getDocs(colRef);
+                
+                snapshot.forEach(docSnap => {
+                    const monthMap = docSnap.data();
+                    Object.assign(allData, monthMap);
+                });
 
                 const allDates = Object.keys(allData).sort();
                 if (allDates.length > 0) {
@@ -798,11 +909,12 @@
         }
 
         function openDayModal(dateStr) {
-            if(!currentUser) {
-                showError("Please wait for database connection.");
-                return;
-            }
             selectedDateStr = dateStr;
+            
+            // If not yet authenticated, trigger connection attempt in the background without blocking modal
+            if (!currentUser) {
+                ensureAuthenticated();
+            }
             
             // Format Date for display (e.g., Monday, Nov 2, 2026)
             const [y, m, d] = dateStr.split('-');
@@ -879,8 +991,12 @@
             }, 4000);
         }
 
-        // Boot
-        window.addEventListener('DOMContentLoaded', init);
+        // Boot safely even if DOMContentLoaded already fired while ES Modules were downloading
+        if (document.readyState === 'loading') {
+            window.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
+        }
 
     </script>
 </body>
