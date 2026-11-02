@@ -203,9 +203,20 @@
                 <div><span class="text-slate-400">User UID:</span> <span id="diagUid" class="text-purple-400">Not signed in</span></div>
                 <div><span class="text-slate-400">Firestore Path:</span> <span id="diagPath" class="text-amber-300 break-all">...</span></div>
                 <div><span class="text-slate-400">Last Status/Error:</span> <span id="diagError" class="text-red-400 break-words">None</span></div>
+                
+                <!-- Live Config Input for External Hosting -->
+                <div class="pt-3 border-t border-slate-700 font-sans">
+                    <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">
+                        Test / Load Firebase Config JSON (Optional)
+                    </label>
+                    <textarea id="manualConfigInput" rows="4" class="w-full p-2 rounded bg-slate-800 border border-slate-700 text-xs font-mono text-slate-100 focus:outline-none focus:border-blue-500" placeholder='{"apiKey": "...", "authDomain": "...", "projectId": "..."}'></textarea>
+                    <p class="text-[11px] text-slate-400 mt-1">
+                        For permanent hosting on GitHub Pages, paste your keys into <code class="text-amber-300">CUSTOM_FIREBASE_CONFIG</code> in <code class="text-amber-300">index.html</code>.
+                    </p>
+                </div>
             </div>
             <div class="bg-slate-50 px-6 py-3 border-t border-slate-200 flex justify-end gap-2">
-                <button id="retryAuthBtn" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition-colors">Retry Connection</button>
+                <button id="retryAuthBtn" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition-colors">Apply & Retry Connection</button>
             </div>
         </div>
     </div>
@@ -220,13 +231,28 @@
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, onSnapshot, collection, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
+        // ============================================================================
+        // GITHUB PAGES / EXTERNAL HOSTING CONFIGURATION
+        // Configured for Firebase project: anon-5693a
+        // ============================================================================
+        const CUSTOM_FIREBASE_CONFIG = {
+            apiKey: "AIzaSyCPnvgg6pWT7fhD8jXc14VbSofjL6JL3Xs",
+            authDomain: "anon-5693a.firebaseapp.com",
+            projectId: "anon-5693a",
+            storageBucket: "anon-5693a.firebasestorage.app",
+            messagingSenderId: "1001618306936",
+            appId: "1:1001618306936:web:11143cdff5eb95f57d3a8d"
+        };
+
         // --- Configuration & Globals ---
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'habit-tracker-default';
         let firebaseConfig = null;
         let lastDiagError = 'None';
 
         try {
-            if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+            if (CUSTOM_FIREBASE_CONFIG && CUSTOM_FIREBASE_CONFIG.apiKey && CUSTOM_FIREBASE_CONFIG.projectId) {
+                firebaseConfig = CUSTOM_FIREBASE_CONFIG;
+            } else if (typeof __firebase_config !== 'undefined' && __firebase_config) {
                 // Safely handle both stringified JSON and pre-parsed configuration objects
                 firebaseConfig = typeof __firebase_config === 'string' 
                     ? JSON.parse(__firebase_config) 
@@ -234,7 +260,7 @@
             }
         } catch (e) {
             lastDiagError = "Config parse error: " + e.message;
-            console.warn("Failed to parse __firebase_config", e);
+            console.warn("Failed to parse Firebase config", e);
         }
         
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
@@ -321,6 +347,20 @@
             connectionStatusBtn.addEventListener('click', openDiagnostics);
             closeDiagModalBtn.addEventListener('click', () => diagModal.classList.add('hidden'));
             retryAuthBtn.addEventListener('click', () => {
+                const rawInput = document.getElementById('manualConfigInput').value.trim();
+                if (rawInput) {
+                    try {
+                        // Allow pasting either strict JSON or a JS object snippet
+                        const parsed = JSON.parse(rawInput);
+                        if (parsed && parsed.projectId) {
+                            firebaseConfig = parsed;
+                            app = null; // Reset app instance so it initializes with new config
+                        }
+                    } catch (err) {
+                        showError("Invalid JSON format in config box.");
+                        return;
+                    }
+                }
                 diagModal.classList.add('hidden');
                 connectToFirebase();
             });
@@ -399,7 +439,13 @@
 
             } catch (error) {
                 console.error("Critical Firebase Error:", error);
-                lastDiagError = `${error.code || 'Error'}: ${error.message}`;
+                let hint = "";
+                if (error.code === 'auth/operation-not-allowed' || error.code === 'auth/admin-restricted-operation') {
+                    hint = " → Enable 'Anonymous' sign-in in Firebase Console > Authentication > Sign-in method.";
+                } else if (error.code === 'auth/unauthorized-domain') {
+                    hint = " → Add 'stableorbit1.github.io' in Firebase Console > Authentication > Settings > Authorized domains.";
+                }
+                lastDiagError = `${error.code || 'Error'}: ${error.message}${hint}`;
                 setStatusUI('error', 'Connection Failed (Click to diagnose)');
                 showError("Database Error: " + (error.code || error.message));
             }
