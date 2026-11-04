@@ -55,6 +55,9 @@
             <!-- View Tabs -->
             <div class="flex bg-slate-100 p-1 rounded-lg">
                 <button id="tabCalendar" class="px-4 py-2 text-sm font-semibold rounded-md bg-white shadow-sm text-slate-800 transition-all">Calendar</button>
+                <button id="tabFitness" class="px-4 py-2 text-sm font-semibold rounded-md text-slate-500 hover:text-slate-800 hover:bg-slate-200 transition-all flex items-center gap-1.5">
+                    <span>🏋️</span> Fitness
+                </button>
                 <button id="tabReports" class="px-4 py-2 text-sm font-semibold rounded-md text-slate-500 hover:text-slate-800 hover:bg-slate-200 transition-all">Reports</button>
             </div>
 
@@ -93,6 +96,73 @@
         <div class="mt-6 flex flex-wrap justify-center gap-4 text-sm text-slate-600" id="legendContainer">
             <!-- JS will populate legend -->
         </div>
+
+        <!-- Fitness View -->
+        <main id="fitnessView" class="hidden flex-grow flex flex-col gap-6 fade-in">
+            
+            <!-- Top Bar: Cycle Recommendation & Rest Timer -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <!-- Smart Cycle Banner -->
+                <div class="lg:col-span-2 bg-gradient-to-r from-slate-900 to-slate-800 text-white rounded-2xl p-5 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <span class="px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider bg-orange-500 text-white rounded-full" id="recommendedBadge">Up Next in Cycle</span>
+                            <span class="text-xs text-slate-300" id="lastWorkoutText">Loading history...</span>
+                        </div>
+                        <h2 class="text-xl font-extrabold mt-1.5" id="activeWorkoutTitle">Workout A: Push (Chest, Shoulders, Triceps)</h2>
+                        <p class="text-xs text-slate-300 mt-0.5">GoodLife Commercial Setup • Compound First + Hypertrophy Supersets</p>
+                    </div>
+                    <button id="completeWorkoutBtn" class="w-full sm:w-auto px-5 py-3 bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white font-bold text-sm rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 shrink-0">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                        <span>Finish & Log Exercise</span>
+                    </button>
+                </div>
+
+                <!-- Built-in Rest Timer -->
+                <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm flex flex-col justify-between">
+                    <div class="flex justify-between items-center">
+                        <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Rest Timer</span>
+                        <span id="timerStatusBadge" class="text-xs font-semibold text-slate-500">Ready</span>
+                    </div>
+                    <div class="my-2 flex items-baseline justify-between">
+                        <div id="restTimerDisplay" class="text-3xl font-extrabold font-mono text-slate-800">00:00</div>
+                        <button id="stopTimerBtn" class="text-xs text-red-500 hover:underline hidden">Reset</button>
+                    </div>
+                    <div class="grid grid-cols-3 gap-2">
+                        <button data-sec="60" class="timer-preset-btn py-1.5 px-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition-colors">60s (Superset)</button>
+                        <button data-sec="90" class="timer-preset-btn py-1.5 px-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition-colors">90s (Accessory)</button>
+                        <button data-sec="150" class="timer-preset-btn py-1.5 px-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition-colors">2.5m (Heavy)</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3-Workout Selector Tabs -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3" id="workoutSelectorContainer">
+                <!-- Populated by JS -->
+            </div>
+
+            <!-- Science & Best Practices Bar -->
+            <div class="bg-blue-50/80 border border-blue-100 rounded-xl p-4 flex flex-wrap gap-y-2 gap-x-6 text-xs text-blue-900">
+                <div class="flex items-center gap-1.5">
+                    <span class="font-bold bg-blue-600 text-white px-1.5 py-0.5 rounded">RPE 8</span>
+                    <span>Leave 1–2 good reps in the tank (0–1 on final isolation set).</span>
+                </div>
+                <div class="flex items-center gap-1.5">
+                    <span class="font-bold bg-purple-600 text-white px-1.5 py-0.5 rounded">Superset (B1+B2)</span>
+                    <span>Perform B1 then immediately B2 with minimal rest; rest 60–90s after both.</span>
+                </div>
+                <div class="flex items-center gap-1.5">
+                    <span class="font-bold bg-emerald-600 text-white px-1.5 py-0.5 rounded">Double Progression</span>
+                    <span>Hit the top of the rep range for all sets before adding 5–10 lbs next session.</span>
+                </div>
+            </div>
+
+            <!-- Active Workout Exercise List -->
+            <div id="workoutExercisesContainer" class="space-y-4">
+                <!-- Populated by JS -->
+            </div>
+
+        </main>
 
         <!-- Reports View -->
         <main id="reportsView" class="hidden flex-grow flex flex-col gap-6">
@@ -273,6 +343,256 @@
             { id: 'social', name: 'Social Connection', icon: '🤝', color: 'bg-pink-500', textCol: 'text-pink-600', ring: 'ring-pink-500' }
         ];
 
+        // 3-Workout Push / Pull / Legs Cycle tailored for GoodLife Fitness
+        const WORKOUT_CYCLE = [
+            {
+                id: 'push',
+                code: 'Workout A',
+                name: 'Push (Chest, Shoulders & Triceps)',
+                shortName: 'Push Day',
+                badgeColor: 'bg-orange-500',
+                focus: 'Horizontal & Vertical Pressing + Tricep / Lateral Delt Supersets',
+                exercises: [
+                    {
+                        id: 'incline_press',
+                        order: '1',
+                        type: 'Primary Compound',
+                        name: 'Incline Dumbbell or Barbell Bench Press',
+                        goodlifeSwap: 'Busy bench? Use Hammer Strength Iso-Lateral Incline Press',
+                        sets: 3,
+                        repRange: '6–8',
+                        rpe: 'RPE 8',
+                        restSec: 150,
+                        cues: '30° bench angle. Lower with a 2-second control to upper chest, drive explosively.'
+                    },
+                    {
+                        id: 'shoulder_press',
+                        order: '2',
+                        type: 'Secondary Compound',
+                        name: 'Seated Dumbbell or Machine Shoulder Press',
+                        goodlifeSwap: 'Life Fitness Shoulder Press or Landmine Press',
+                        sets: 3,
+                        repRange: '8–10',
+                        rpe: 'RPE 8',
+                        restSec: 120,
+                        cues: 'Keep ribs tucked and core braced. Press slightly in front of the face (scapular plane).'
+                    },
+                    {
+                        id: 'pec_deck',
+                        order: 'B1',
+                        type: 'Superset B (Pair with B2)',
+                        name: 'Life Fitness Pec Deck Fly (or Cable Fly)',
+                        goodlifeSwap: 'Dual Adjustable Pulley Mid-Chest Cable Fly',
+                        sets: 3,
+                        repRange: '10–12',
+                        rpe: 'RPE 8.5',
+                        restSec: 0,
+                        cues: 'Pause 1 second at peak contraction. Move immediately to B2.'
+                    },
+                    {
+                        id: 'tricep_pushdown',
+                        order: 'B2',
+                        type: 'Superset B (After B1)',
+                        name: 'Cable Rope Tricep Pushdown',
+                        goodlifeSwap: 'V-Bar Pushdown or Assisted Dip Machine',
+                        sets: 3,
+                        repRange: '12–15',
+                        rpe: 'RPE 9',
+                        restSec: 75,
+                        cues: 'Pin elbows to ribs. Spread the rope apart at the bottom and rest 75s.'
+                    },
+                    {
+                        id: 'lateral_raise',
+                        order: 'C1',
+                        type: 'Superset C (Pair with C2)',
+                        name: 'Dumbbell or Cable Lateral Raises',
+                        goodlifeSwap: 'Life Fitness Lateral Raise Machine',
+                        sets: 3,
+                        repRange: '12–15',
+                        rpe: 'RPE 9',
+                        restSec: 0,
+                        cues: 'Lead with your elbows, raising out to the walls rather than shrugging up.'
+                    },
+                    {
+                        id: 'overhead_tricep',
+                        order: 'C2',
+                        type: 'Superset C (After C1)',
+                        name: 'Overhead Cable Rope Tricep Extension',
+                        goodlifeSwap: 'EZ-Bar Skullcrushers or Dumbbell Overhead Extension',
+                        sets: 3,
+                        repRange: '12–15',
+                        rpe: 'RPE 9',
+                        restSec: 75,
+                        cues: 'Emphasizes the long head of the triceps in a stretched position.'
+                    }
+                ]
+            },
+            {
+                id: 'pull',
+                code: 'Workout B',
+                name: 'Pull (Back, Rear Delts & Biceps)',
+                shortName: 'Pull Day',
+                badgeColor: 'bg-blue-600',
+                focus: 'Vertical Pull + Horizontal Row + Posterior Chain & Arm Supersets',
+                exercises: [
+                    {
+                        id: 'lat_pulldown',
+                        order: '1',
+                        type: 'Primary Compound',
+                        name: 'Wide or Mag-Grip Lat Pulldown (or Pull-Ups)',
+                        goodlifeSwap: 'Assisted Pull-Up Station or Hammer Strength High Row',
+                        sets: 3,
+                        repRange: '8–10',
+                        rpe: 'RPE 8',
+                        restSec: 120,
+                        cues: 'Depress shoulders first, drive elbows down toward your hips. Control the stretch.'
+                    },
+                    {
+                        id: 'chest_supported_row',
+                        order: '2',
+                        type: 'Secondary Compound',
+                        name: 'Chest-Supported Row or Seated Cable Row',
+                        goodlifeSwap: 'Hammer Strength Iso-Lateral Row or 1-Arm Dumbbell Row',
+                        sets: 3,
+                        repRange: '8–10',
+                        rpe: 'RPE 8',
+                        restSec: 120,
+                        cues: 'Squeeze shoulder blades together at the back; let protraction stretch the mid-back.'
+                    },
+                    {
+                        id: 'face_pulls',
+                        order: 'B1',
+                        type: 'Superset B (Pair with B2)',
+                        name: 'High-Pulley Cable Rope Face Pulls',
+                        goodlifeSwap: 'Reverse Pec Deck (Rear Delt Machine)',
+                        sets: 3,
+                        repRange: '12–15',
+                        rpe: 'RPE 8.5',
+                        restSec: 0,
+                        cues: 'Pull rope toward forehead while externally rotating thumbs backward.'
+                    },
+                    {
+                        id: 'incline_curl',
+                        order: 'B2',
+                        type: 'Superset B (After B1)',
+                        name: 'Incline Dumbbell Curl (or Bayesian Cable Curl)',
+                        goodlifeSwap: 'EZ-Bar Preacher Curl Bench',
+                        sets: 3,
+                        repRange: '10–12',
+                        rpe: 'RPE 9',
+                        restSec: 75,
+                        cues: 'Keep elbows behind torso for a deep long-head bicep stretch.'
+                    },
+                    {
+                        id: 'straight_arm_pulldown',
+                        order: 'C1',
+                        type: 'Superset C (Pair with C2)',
+                        name: 'Straight-Arm Cable Lat Pulldown',
+                        goodlifeSwap: 'Dumbbell Pullover on Bench',
+                        sets: 3,
+                        repRange: '12–15',
+                        rpe: 'RPE 8.5',
+                        restSec: 0,
+                        cues: 'Slight bend in elbows, sweep the bar/rope in an arc down to your thighs.'
+                    },
+                    {
+                        id: 'hammer_curl',
+                        order: 'C2',
+                        type: 'Superset C (After C1)',
+                        name: 'Cable Rope or Dumbbell Hammer Curls',
+                        goodlifeSwap: 'Cross-Body Dumbbell Hammer Curls',
+                        sets: 3,
+                        repRange: '12–15',
+                        rpe: 'RPE 9',
+                        restSec: 75,
+                        cues: 'Neutral grip targets the brachialis and forearms.'
+                    }
+                ]
+            },
+            {
+                id: 'legs',
+                code: 'Workout C',
+                name: 'Legs & Core (Quads, Hamstrings, Glutes & Abs)',
+                shortName: 'Legs & Core',
+                badgeColor: 'bg-emerald-600',
+                focus: 'Squat Pattern + Hinge Pattern + Antagonist Leg & Core Supersets',
+                exercises: [
+                    {
+                        id: 'squat_or_press',
+                        order: '1',
+                        type: 'Primary Compound',
+                        name: 'Barbell Squat, Hack Squat, or 45° Leg Press',
+                        goodlifeSwap: 'GoodLife Squat Rack, Linear Hack Squat, or Pendulum/45° Leg Press',
+                        sets: 3,
+                        repRange: '6–8',
+                        rpe: 'RPE 8',
+                        restSec: 150,
+                        cues: 'Place feet shoulder-width. Achieve full knee flexion without lower back rounding.'
+                    },
+                    {
+                        id: 'rdl',
+                        order: '2',
+                        type: 'Secondary Compound',
+                        name: 'Barbell or Dumbbell Romanian Deadlift (RDL)',
+                        goodlifeSwap: '45° Back Extension (Glute/Ham Focus) holding Plate',
+                        sets: 3,
+                        repRange: '8–10',
+                        rpe: 'RPE 8',
+                        restSec: 120,
+                        cues: 'Push hips straight back like closing a car door. Stop mid-shin when hips stop moving back.'
+                    },
+                    {
+                        id: 'leg_curl',
+                        order: 'B1',
+                        type: 'Antagonist Superset B (Pair with B2)',
+                        name: 'Seated or Lying Leg Curl Machine',
+                        goodlifeSwap: 'Life Fitness Seated Leg Curl (lean slightly forward for stretch)',
+                        sets: 3,
+                        repRange: '10–12',
+                        rpe: 'RPE 9',
+                        restSec: 0,
+                        cues: 'Doing hamstrings right before quads warms up the knee joint and boosts quad output.'
+                    },
+                    {
+                        id: 'leg_extension',
+                        order: 'B2',
+                        type: 'Antagonist Superset B (After B1)',
+                        name: 'Leg Extension Machine',
+                        goodlifeSwap: 'Goblet Walking Lunges or Bulgarian Split Squats',
+                        sets: 3,
+                        repRange: '10–12',
+                        rpe: 'RPE 9',
+                        restSec: 90,
+                        cues: 'Pause 1 full second at the top of each rep. Control the descent.'
+                    },
+                    {
+                        id: 'calf_raise',
+                        order: 'C1',
+                        type: 'Superset C (Pair with C2)',
+                        name: 'Standing Calf Raise or Leg Press Calf Press',
+                        goodlifeSwap: 'Seated Calf Raise Machine',
+                        sets: 3,
+                        repRange: '12–15',
+                        rpe: 'RPE 9',
+                        restSec: 0,
+                        cues: '2-second pause in the bottom stretch; avoid bouncing out of the bottom.'
+                    },
+                    {
+                        id: 'core_crunch',
+                        order: 'C2',
+                        type: 'Superset C (After C1)',
+                        name: 'Kneeling Cable Crunch or Hanging Leg Raise',
+                        goodlifeSwap: 'Captain’s Chair Leg Raise or Ab Crunch Machine',
+                        sets: 3,
+                        repRange: '12–15',
+                        rpe: 'RPE 9',
+                        restSec: 60,
+                        cues: 'Curl your ribs toward your pelvis rather than hinging only at the hips.'
+                    }
+                ]
+            }
+        ];
+
         // App State
         let app, db, auth;
         let currentUser = null;
@@ -284,6 +604,18 @@
         let unsubscribeSnapshot = null;
         let isToggling = false; // Prevent spam clicking
         let myChart = null; // Chart.js instance
+
+        // Fitness State
+        let activeWorkoutId = 'push';
+        let recommendedWorkoutId = 'push';
+        let fitnessState = {
+            lastWorkoutId: null,
+            lastWorkoutDate: null,
+            exerciseLogs: {}, // { exerciseId: { sets: [{weight: '', reps: ''}, ...] } }
+            currentSessionChecks: {} // { "exerciseId_setIdx": true }
+        };
+        let restTimerInterval = null;
+        let restSecondsRemaining = 0;
 
         // --- DOM Elements ---
         const monthYearDisplay = document.getElementById('monthYearDisplay');
@@ -297,8 +629,10 @@
         
         // Views
         const tabCalendar = document.getElementById('tabCalendar');
+        const tabFitness = document.getElementById('tabFitness');
         const tabReports = document.getElementById('tabReports');
         const calendarView = document.getElementById('calendarView');
+        const fitnessView = document.getElementById('fitnessView');
         const reportsView = document.getElementById('reportsView');
         const legendContainer = document.getElementById('legendContainer');
         
@@ -336,7 +670,16 @@
             dayModal.addEventListener('click', (e) => { if (e.target === dayModal) closeDayModal(); });
             
             tabCalendar.addEventListener('click', () => switchTab('calendar'));
+            tabFitness.addEventListener('click', () => switchTab('fitness'));
             tabReports.addEventListener('click', () => switchTab('reports'));
+
+            // Fitness listeners
+            document.getElementById('completeWorkoutBtn').addEventListener('click', completeCurrentWorkout);
+            document.getElementById('stopTimerBtn').addEventListener('click', stopRestTimer);
+            document.querySelectorAll('.timer-preset-btn').forEach(btn => {
+                btn.addEventListener('click', () => startRestTimer(parseInt(btn.dataset.sec)));
+            });
+            renderFitnessUI();
 
             inputMentalHealth.addEventListener('input', (e) => {
                 mentalHealthVal.textContent = `${e.target.value}/10`;
@@ -409,6 +752,7 @@
                             lastDiagError = 'None';
                             setStatusUI('connected', `Cloud Synced • ${user.uid}`);
                             loadMonthData(currentYear, currentMonth);
+                            loadFitnessState();
                         }
                     });
                 }
@@ -435,6 +779,7 @@
                     currentUser = user;
                     setStatusUI('connected', `Cloud Synced • ${user.uid}`);
                     loadMonthData(currentYear, currentMonth);
+                    loadFitnessState();
                 }
 
             } catch (error) {
@@ -479,28 +824,352 @@
         }
 
         function switchTab(tab) {
-            if (tab === 'calendar') {
-                tabCalendar.classList.add('bg-white', 'shadow-sm', 'text-slate-800');
-                tabCalendar.classList.remove('text-slate-500', 'hover:text-slate-800', 'hover:bg-slate-200');
-                tabReports.classList.add('text-slate-500', 'hover:text-slate-800', 'hover:bg-slate-200');
-                tabReports.classList.remove('bg-white', 'shadow-sm', 'text-slate-800');
-                
-                calendarView.classList.remove('hidden');
-                legendContainer.classList.remove('hidden');
-                monthNav.classList.remove('hidden');
-                reportsView.classList.add('hidden');
-            } else {
-                tabReports.classList.add('bg-white', 'shadow-sm', 'text-slate-800');
-                tabReports.classList.remove('text-slate-500', 'hover:text-slate-800', 'hover:bg-slate-200');
-                tabCalendar.classList.add('text-slate-500', 'hover:text-slate-800', 'hover:bg-slate-200');
-                tabCalendar.classList.remove('bg-white', 'shadow-sm', 'text-slate-800');
-                
-                calendarView.classList.add('hidden');
-                legendContainer.classList.add('hidden');
-                monthNav.classList.add('hidden');
-                reportsView.classList.remove('hidden');
-                
+            const tabs = {
+                calendar: tabCalendar,
+                fitness: tabFitness,
+                reports: tabReports
+            };
+
+            Object.keys(tabs).forEach(key => {
+                if (key === tab) {
+                    tabs[key].classList.add('bg-white', 'shadow-sm', 'text-slate-800');
+                    tabs[key].classList.remove('text-slate-500', 'hover:text-slate-800', 'hover:bg-slate-200');
+                } else {
+                    tabs[key].classList.add('text-slate-500', 'hover:text-slate-800', 'hover:bg-slate-200');
+                    tabs[key].classList.remove('bg-white', 'shadow-sm', 'text-slate-800');
+                }
+            });
+
+            calendarView.classList.toggle('hidden', tab !== 'calendar');
+            legendContainer.classList.toggle('hidden', tab !== 'calendar');
+            monthNav.classList.toggle('hidden', tab !== 'calendar');
+            fitnessView.classList.toggle('hidden', tab !== 'fitness');
+            reportsView.classList.toggle('hidden', tab !== 'reports');
+
+            if (tab === 'reports') {
                 loadReportsData();
+            } else if (tab === 'fitness') {
+                renderFitnessUI();
+            }
+        }
+
+        // --- Fitness Logic & Cloud Persistence ---
+        function getTodayDateStr() {
+            const now = new Date();
+            return `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
+        }
+
+        function computeNextWorkout(lastId) {
+            if (!lastId) return 'push';
+            const order = ['push', 'pull', 'legs'];
+            const idx = order.indexOf(lastId);
+            return order[(idx + 1) % order.length];
+        }
+
+        function loadFitnessState() {
+            if (!currentUser || !db) return;
+            const docRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'fitness_data', 'tracker_state');
+            onSnapshot(docRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    fitnessState.lastWorkoutId = data.lastWorkoutId || null;
+                    fitnessState.lastWorkoutDate = data.lastWorkoutDate || null;
+                    fitnessState.exerciseLogs = data.exerciseLogs || {};
+                    recommendedWorkoutId = computeNextWorkout(fitnessState.lastWorkoutId);
+                    // Only auto-switch if user hasn't started checking off sets in current session
+                    if (Object.keys(fitnessState.currentSessionChecks).length === 0) {
+                        activeWorkoutId = recommendedWorkoutId;
+                    }
+                }
+                renderFitnessUI();
+            }, (err) => {
+                console.warn("Fitness state sync error:", err);
+            });
+        }
+
+        async function saveExerciseSetInput(exerciseId, setIdx, field, val) {
+            if (!fitnessState.exerciseLogs[exerciseId]) {
+                fitnessState.exerciseLogs[exerciseId] = { sets: [] };
+            }
+            const setsArr = fitnessState.exerciseLogs[exerciseId].sets || [];
+            while (setsArr.length <= setIdx) {
+                setsArr.push({ weight: '', reps: '' });
+            }
+            setsArr[setIdx][field] = val;
+            fitnessState.exerciseLogs[exerciseId].sets = setsArr;
+
+            const user = await ensureAuthenticated();
+            if (!user || !db) return;
+            try {
+                const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'fitness_data', 'tracker_state');
+                await setDoc(docRef, {
+                    exerciseLogs: fitnessState.exerciseLogs
+                }, { merge: true });
+            } catch (e) {
+                console.error("Failed to save set log:", e);
+            }
+        }
+
+        function renderFitnessUI() {
+            const selectorContainer = document.getElementById('workoutSelectorContainer');
+            const exercisesContainer = document.getElementById('workoutExercisesContainer');
+            if (!selectorContainer || !exercisesContainer) return;
+
+            const activeWorkout = WORKOUT_CYCLE.find(w => w.id === activeWorkoutId) || WORKOUT_CYCLE[0];
+
+            // Header Banner Info
+            document.getElementById('activeWorkoutTitle').textContent = `${activeWorkout.code}: ${activeWorkout.name}`;
+            const recBadge = document.getElementById('recommendedBadge');
+            if (activeWorkout.id === recommendedWorkoutId) {
+                recBadge.textContent = '★ Recommended Next in Cycle';
+                recBadge.className = 'px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider bg-orange-500 text-white rounded-full';
+            } else {
+                recBadge.textContent = 'Viewing Workout';
+                recBadge.className = 'px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider bg-slate-600 text-slate-200 rounded-full';
+            }
+
+            const lastTextEl = document.getElementById('lastWorkoutText');
+            if (fitnessState.lastWorkoutId && fitnessState.lastWorkoutDate) {
+                const lastW = WORKOUT_CYCLE.find(w => w.id === fitnessState.lastWorkoutId);
+                lastTextEl.textContent = `Last completed: ${lastW ? lastW.shortName : fitnessState.lastWorkoutId} on ${fitnessState.lastWorkoutDate}`;
+            } else {
+                lastTextEl.textContent = 'Start with Workout A (Push) to kick off your cycle';
+            }
+
+            // Render 3-Workout Cycle Selector Cards
+            selectorContainer.innerHTML = WORKOUT_CYCLE.map(w => {
+                const isSelected = w.id === activeWorkoutId;
+                const isRec = w.id === recommendedWorkoutId;
+                return `
+                    <button data-workout="${w.id}" class="workout-tab-btn text-left p-4 rounded-xl border transition-all ${
+                        isSelected 
+                            ? 'bg-slate-900 text-white border-slate-900 shadow-md' 
+                            : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                    }">
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="text-xs font-bold uppercase tracking-wider ${isSelected ? 'text-slate-300' : 'text-slate-400'}">${w.code}</span>
+                            ${isRec ? `<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-500 text-white">NEXT UP</span>` : ''}
+                        </div>
+                        <div class="font-bold text-base">${w.shortName}</div>
+                        <div class="text-xs mt-1 ${isSelected ? 'text-slate-300' : 'text-slate-500'} truncate">${w.name.split('(')[1]?.replace(')', '') || ''}</div>
+                    </button>
+                `;
+            }).join('');
+
+            selectorContainer.querySelectorAll('.workout-tab-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    activeWorkoutId = btn.dataset.workout;
+                    renderFitnessUI();
+                });
+            });
+
+            // Render Exercises & Interactive Set Rows
+            exercisesContainer.innerHTML = activeWorkout.exercises.map(ex => {
+                const savedSets = (fitnessState.exerciseLogs[ex.id] && fitnessState.exerciseLogs[ex.id].sets) || [];
+                const isSuperset = ex.order.startsWith('B') || ex.order.startsWith('C');
+
+                let setRowsHTML = '';
+                for (let s = 0; s < ex.sets; s++) {
+                    const prevWeight = savedSets[s]?.weight ?? '';
+                    const prevReps = savedSets[s]?.reps ?? '';
+                    const checkKey = `${ex.id}_${s}`;
+                    const isChecked = !!fitnessState.currentSessionChecks[checkKey];
+
+                    setRowsHTML += `
+                        <div class="grid grid-cols-12 items-center gap-2 py-2 px-3 rounded-lg ${isChecked ? 'bg-emerald-50 border border-emerald-200' : 'bg-slate-50 border border-slate-100'} transition-colors">
+                            <div class="col-span-2 text-xs font-bold text-slate-500">Set ${s + 1}</div>
+                            <div class="col-span-4">
+                                <div class="relative">
+                                    <input type="number" inputmode="decimal" step="2.5" placeholder="Weight" value="${prevWeight}"
+                                        data-ex="${ex.id}" data-set="${s}" data-field="weight"
+                                        class="fitness-input w-full text-sm font-semibold bg-white border border-slate-200 rounded-md py-1.5 pl-2.5 pr-8 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                    <span class="absolute right-2 top-2 text-[10px] text-slate-400">lbs</span>
+                                </div>
+                            </div>
+                            <div class="col-span-4">
+                                <div class="relative">
+                                    <input type="number" inputmode="numeric" placeholder="${ex.repRange}" value="${prevReps}"
+                                        data-ex="${ex.id}" data-set="${s}" data-field="reps"
+                                        class="fitness-input w-full text-sm font-semibold bg-white border border-slate-200 rounded-md py-1.5 pl-2.5 pr-9 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                    <span class="absolute right-2 top-2 text-[10px] text-slate-400">reps</span>
+                                </div>
+                            </div>
+                            <div class="col-span-2 flex justify-end">
+                                <button data-ex="${ex.id}" data-set="${s}" data-rest="${ex.restSec}"
+                                    class="set-check-btn w-8 h-8 rounded-lg flex items-center justify-center font-bold transition-all ${
+                                        isChecked 
+                                            ? 'bg-emerald-500 text-white shadow-sm' 
+                                            : 'bg-white border border-slate-300 text-slate-400 hover:border-emerald-400 hover:text-emerald-500'
+                                    }" title="Complete Set & Start Rest Timer">
+                                    ✓
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                return `
+                    <div class="bg-white rounded-2xl shadow-sm border ${isSuperset ? 'border-l-4 border-l-purple-500 border-slate-200' : 'border-slate-200'} p-5">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                            <div>
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <span class="px-2 py-0.5 text-xs font-extrabold rounded ${isSuperset ? 'bg-purple-100 text-purple-800' : 'bg-slate-900 text-white'}">${ex.order}</span>
+                                    <span class="text-xs font-semibold uppercase tracking-wide text-slate-400">${ex.type}</span>
+                                    <span class="text-xs font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-700">${ex.sets} Sets × ${ex.repRange} Reps • ${ex.rpe}</span>
+                                </div>
+                                <h4 class="text-base sm:text-lg font-bold text-slate-800 mt-1">${ex.name}</h4>
+                            </div>
+                            <div class="text-xs text-slate-500 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100 shrink-0">
+                                <span class="font-semibold text-slate-700">GoodLife Alt:</span> ${ex.goodlifeSwap}
+                            </div>
+                        </div>
+                        <p class="text-xs text-slate-600 mt-2.5 mb-3">💡 <span class="font-medium">${ex.cues}</span></p>
+                        <div class="space-y-2">
+                            ${setRowsHTML}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            // Bind input change listeners
+            exercisesContainer.querySelectorAll('.fitness-input').forEach(input => {
+                input.addEventListener('change', (e) => {
+                    saveExerciseSetInput(
+                        e.target.dataset.ex,
+                        parseInt(e.target.dataset.set),
+                        e.target.dataset.field,
+                        e.target.value
+                    );
+                });
+            });
+
+            // Bind set completion checkboxes + auto rest timer
+            exercisesContainer.querySelectorAll('.set-check-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const key = `${btn.dataset.ex}_${btn.dataset.set}`;
+                    const nowChecked = !fitnessState.currentSessionChecks[key];
+                    if (nowChecked) {
+                        fitnessState.currentSessionChecks[key] = true;
+                        const restSec = parseInt(btn.dataset.rest);
+                        if (restSec > 0) {
+                            startRestTimer(restSec);
+                        }
+                    } else {
+                        delete fitnessState.currentSessionChecks[key];
+                    }
+                    renderFitnessUI();
+                });
+            });
+        }
+
+        function startRestTimer(seconds) {
+            if (restTimerInterval) clearInterval(restTimerInterval);
+            restSecondsRemaining = seconds;
+            const display = document.getElementById('restTimerDisplay');
+            const badge = document.getElementById('timerStatusBadge');
+            const stopBtn = document.getElementById('stopTimerBtn');
+
+            stopBtn.classList.remove('hidden');
+            badge.textContent = 'Resting...';
+            badge.className = 'text-xs font-bold text-orange-500 animate-pulse';
+
+            const updateClock = () => {
+                const m = Math.floor(restSecondsRemaining / 60).toString().padStart(2, '0');
+                const s = (restSecondsRemaining % 60).toString().padStart(2, '0');
+                display.textContent = `${m}:${s}`;
+            };
+
+            updateClock();
+            restTimerInterval = setInterval(() => {
+                restSecondsRemaining--;
+                if (restSecondsRemaining <= 0) {
+                    clearInterval(restTimerInterval);
+                    restTimerInterval = null;
+                    display.textContent = '00:00';
+                    badge.textContent = 'Next Set Ready!';
+                    badge.className = 'text-xs font-bold text-emerald-600';
+                    stopBtn.classList.add('hidden');
+                } else {
+                    updateClock();
+                }
+            }, 1000);
+        }
+
+        function stopRestTimer() {
+            if (restTimerInterval) clearInterval(restTimerInterval);
+            restTimerInterval = null;
+            restSecondsRemaining = 0;
+            document.getElementById('restTimerDisplay').textContent = '00:00';
+            const badge = document.getElementById('timerStatusBadge');
+            badge.textContent = 'Ready';
+            badge.className = 'text-xs font-semibold text-slate-500';
+            document.getElementById('stopTimerBtn').classList.add('hidden');
+        }
+
+        async function completeCurrentWorkout() {
+            const btn = document.getElementById('completeWorkoutBtn');
+            const todayStr = getTodayDateStr();
+            const monthKey = todayStr.substring(0, 7);
+            const activeWorkout = WORKOUT_CYCLE.find(w => w.id === activeWorkoutId) || WORKOUT_CYCLE[0];
+
+            btn.disabled = true;
+            btn.innerHTML = '<span>Saving to Cloud...</span>';
+
+            try {
+                const user = await ensureAuthenticated();
+                if (!user || !db) {
+                    showError("Cannot log workout: Database is not connected.");
+                    return;
+                }
+
+                // 1. Update Fitness Cycle State in Firestore
+                fitnessState.lastWorkoutId = activeWorkout.id;
+                fitnessState.lastWorkoutDate = todayStr;
+                fitnessState.currentSessionChecks = {};
+                recommendedWorkoutId = computeNextWorkout(activeWorkout.id);
+
+                const fitDocRef = doc(db, 'artifacts', appId, 'users', user.uid, 'fitness_data', 'tracker_state');
+                await setDoc(fitDocRef, {
+                    lastWorkoutId: activeWorkout.id,
+                    lastWorkoutDate: todayStr,
+                    exerciseLogs: fitnessState.exerciseLogs
+                }, { merge: true });
+
+                // 2. Automatically mark today's Exercise habit as TRUE on the Calendar
+                if (monthKey === getMonthKey(currentYear, currentMonth)) {
+                    monthData[todayStr] = {
+                        ...(monthData[todayStr] || {}),
+                        exercise: true,
+                        workoutCode: activeWorkout.shortName
+                    };
+                    updateCalendarUI();
+                }
+
+                const habitDocRef = doc(db, 'artifacts', appId, 'users', user.uid, 'monthly_habits', monthKey);
+                await setDoc(habitDocRef, {
+                    [todayStr]: {
+                        exercise: true,
+                        workoutCode: activeWorkout.shortName
+                    }
+                }, { merge: true });
+
+                activeWorkoutId = recommendedWorkoutId;
+                renderFitnessUI();
+
+                btn.innerHTML = '<span>✓ Logged! Exercise Checked Today</span>';
+                setTimeout(() => {
+                    btn.disabled = false;
+                    btn.innerHTML = `
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                        <span>Finish & Log Exercise</span>
+                    `;
+                }, 2500);
+
+            } catch (error) {
+                console.error("Failed to complete workout:", error);
+                showError("Failed to log workout: " + (error.code || error.message));
+                btn.disabled = false;
+                btn.innerHTML = '<span>Finish & Log Exercise</span>';
             }
         }
 
@@ -924,6 +1593,13 @@
                         indicatorsContainer.appendChild(dot);
                     }
                 });
+
+                if (dayData.workoutCode) {
+                    const tag = document.createElement('span');
+                    tag.className = 'text-[10px] font-bold px-1.5 py-0.5 rounded bg-orange-100 text-orange-800 leading-none';
+                    tag.textContent = dayData.workoutCode;
+                    indicatorsContainer.appendChild(tag);
+                }
             });
         }
 
