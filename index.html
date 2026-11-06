@@ -162,6 +162,41 @@
                 <!-- Populated by JS -->
             </div>
 
+            <!-- Database Workout Summary & Exercise History Section -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-2">
+                <!-- Workouts Completed by Type -->
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-base font-bold text-slate-800">Workouts Completed by Type</h3>
+                            <span id="totalWorkoutsBadge" class="text-xs font-extrabold px-2.5 py-1 rounded-full bg-slate-900 text-white">0 Total</span>
+                        </div>
+                        <div id="workoutsByTypeContainer" class="space-y-3">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+                    <p class="text-[11px] text-slate-400 mt-4 pt-3 border-t border-slate-100">
+                        Synced to Firestore <code class="text-slate-600">workout_history</code> collection.
+                    </p>
+                </div>
+
+                <!-- Exercise History (Weight & Reps) Explorer -->
+                <div class="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-slate-200 p-5 flex flex-col">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                        <div>
+                            <h3 class="text-base font-bold text-slate-800">Exercise History (Weight & Reps)</h3>
+                            <p class="text-xs text-slate-500">Historical sets logged across your completed workouts</p>
+                        </div>
+                        <select id="exerciseHistoryFilter" class="text-xs font-semibold bg-slate-50 border border-slate-200 text-slate-700 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="all">All Exercises (Recent Logs)</option>
+                        </select>
+                    </div>
+                    <div id="exerciseHistoryList" class="space-y-2.5 max-h-96 overflow-y-auto pr-1">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+            </div>
+
         </main>
 
         <!-- Reports View -->
@@ -199,6 +234,26 @@
                  <div class="w-full h-72">
                      <canvas id="healthChart"></canvas>
                  </div>
+            </div>
+
+            <!-- Fitness & Workout History Report -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                    <h3 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                        <span>🏋️</span> Workouts by Type
+                    </h3>
+                    <div id="reportsWorkoutTypes" class="space-y-3">
+                        <!-- JS populated -->
+                    </div>
+                </div>
+                <div class="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                    <h3 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                        <span>📈</span> Logged Exercise History (Weight & Reps)
+                    </h3>
+                    <div id="reportsExerciseHistory" class="space-y-3 max-h-96 overflow-y-auto pr-1">
+                        <!-- JS populated -->
+                    </div>
+                </div>
             </div>
         </main>
     </div>
@@ -612,8 +667,12 @@
             lastWorkoutId: null,
             lastWorkoutDate: null,
             exerciseLogs: {}, // { exerciseId: { sets: [{weight: '', reps: ''}, ...] } }
-            currentSessionChecks: {} // { "exerciseId_setIdx": true }
+            currentSessionChecks: {}, // { "exerciseId_setIdx": true }
+            workoutHistory: [] // Array of completed session docs from Firestore
         };
+        let unsubscribeFitnessState = null;
+        let unsubscribeWorkoutHistory = null;
+        let selectedHistoryExerciseId = 'all';
         let restTimerInterval = null;
         let restSecondsRemaining = 0;
 
@@ -678,6 +737,11 @@
             document.getElementById('stopTimerBtn').addEventListener('click', stopRestTimer);
             document.querySelectorAll('.timer-preset-btn').forEach(btn => {
                 btn.addEventListener('click', () => startRestTimer(parseInt(btn.dataset.sec)));
+            });
+            populateExerciseFilterDropdown();
+            document.getElementById('exerciseHistoryFilter').addEventListener('change', (e) => {
+                selectedHistoryExerciseId = e.target.value;
+                renderWorkoutHistorySection();
             });
             renderFitnessUI();
 
@@ -868,8 +932,12 @@
 
         function loadFitnessState() {
             if (!currentUser || !db) return;
+
+            if (unsubscribeFitnessState) unsubscribeFitnessState();
+            if (unsubscribeWorkoutHistory) unsubscribeWorkoutHistory();
+
             const docRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'fitness_data', 'tracker_state');
-            onSnapshot(docRef, (docSnap) => {
+            unsubscribeFitnessState = onSnapshot(docRef, (docSnap) => {
                 if (docSnap.exists()) {
                     const data = docSnap.data();
                     fitnessState.lastWorkoutId = data.lastWorkoutId || null;
@@ -885,6 +953,67 @@
             }, (err) => {
                 console.warn("Fitness state sync error:", err);
             });
+
+            // Listen to historical workout sessions collection (Rule 1 & Rule 2 compliant)
+            const historyColRef = collection(db, 'artifacts', appId, 'users', currentUser.uid, 'workout_history');
+            unsubscribeWorkoutHistory = onSnapshot(historyColRef, (snap) => {
+                const sessions = [];
+                snap.forEach(d => sessions.push({ id: d.id, ...d.data() }));
+                // Sort in JS memory newest first (avoids Firestore composite index requirements)
+                sessions.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+                fitnessState.workoutHistory = sessions;
+                renderFitnessUI();
+                if (!reportsView.classList.contains('hidden')) {
+                    renderFitnessReportsUI();
+                }
+            }, (err) => {
+                console.warn("Workout history sync error:", err);
+            });
+        }
+
+        function populateExerciseFilterDropdown() {
+            const select = document.getElementById('exerciseHistoryFilter');
+            if (!select) return;
+            let optionsHTML = '<option value="all">All Exercises (Recent Logs)</option>';
+            WORKOUT_CYCLE.forEach(w => {
+                optionsHTML += `<optgroup label="${w.code}: ${w.shortName}">`;
+                w.exercises.forEach(ex => {
+                    optionsHTML += `<option value="${ex.id}">${ex.name}</option>`;
+                });
+                optionsHTML += `</optgroup>`;
+            });
+            select.innerHTML = optionsHTML;
+        }
+
+        function getExerciseHistoryEntries(exerciseIdFilter = 'all') {
+            const entries = [];
+            fitnessState.workoutHistory.forEach(session => {
+                const exercises = session.exercises || [];
+                exercises.forEach(ex => {
+                    if (exerciseIdFilter !== 'all' && ex.exerciseId !== exerciseIdFilter) return;
+                    const validSets = (ex.sets || []).filter(s => s.weight !== '' || s.reps !== '');
+                    if (validSets.length === 0) return;
+
+                    let maxWeight = 0;
+                    validSets.forEach(s => {
+                        const w = parseFloat(s.weight);
+                        if (!isNaN(w) && w > maxWeight) maxWeight = w;
+                    });
+
+                    entries.push({
+                        sessionId: session.id,
+                        date: session.date,
+                        timestamp: session.timestamp || 0,
+                        workoutId: session.workoutId,
+                        workoutName: session.workoutName || session.workoutCode || session.workoutId,
+                        exerciseId: ex.exerciseId,
+                        exerciseName: ex.exerciseName,
+                        sets: validSets,
+                        maxWeight
+                    });
+                });
+            });
+            return entries;
         }
 
         async function saveExerciseSetInput(exerciseId, setIdx, field, val) {
@@ -968,6 +1097,29 @@
                 const savedSets = (fitnessState.exerciseLogs[ex.id] && fitnessState.exerciseLogs[ex.id].sets) || [];
                 const isSuperset = ex.order.startsWith('B') || ex.order.startsWith('C');
 
+                // Pull historical logs for this specific exercise
+                const pastLogs = getExerciseHistoryEntries(ex.id);
+                let historyBannerHTML = '';
+                if (pastLogs.length > 0) {
+                    const latestLog = pastLogs[0];
+                    let bestWeight = 0;
+                    pastLogs.forEach(log => {
+                        if (log.maxWeight > bestWeight) bestWeight = log.maxWeight;
+                    });
+                    const setsSummary = latestLog.sets
+                        .map(s => `${s.weight || 0} lbs × ${s.reps || 0}`)
+                        .join('  •  ');
+                    historyBannerHTML = `
+                        <div class="mb-3 px-3 py-2 rounded-lg bg-slate-50 border border-slate-200/80 flex flex-wrap items-center justify-between gap-2 text-xs">
+                            <div class="text-slate-600">
+                                <span class="font-bold text-slate-700">Last Logged (${latestLog.date}):</span>
+                                <span class="font-mono ml-1 text-slate-800">${setsSummary}</span>
+                            </div>
+                            ${bestWeight > 0 ? `<span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-bold text-[11px]">PR Top Weight: ${bestWeight} lbs</span>` : ''}
+                        </div>
+                    `;
+                }
+
                 let setRowsHTML = '';
                 for (let s = 0; s < ex.sets; s++) {
                     const prevWeight = savedSets[s]?.weight ?? '';
@@ -1024,6 +1176,7 @@
                             </div>
                         </div>
                         <p class="text-xs text-slate-600 mt-2.5 mb-3">💡 <span class="font-medium">${ex.cues}</span></p>
+                        ${historyBannerHTML}
                         <div class="space-y-2">
                             ${setRowsHTML}
                         </div>
@@ -1060,6 +1213,112 @@
                     renderFitnessUI();
                 });
             });
+
+            renderWorkoutHistorySection();
+        }
+
+        function getWorkoutTypeCounts() {
+            const counts = { push: 0, pull: 0, legs: 0 };
+            fitnessState.workoutHistory.forEach(session => {
+                if (counts[session.workoutId] !== undefined) {
+                    counts[session.workoutId]++;
+                }
+            });
+            return counts;
+        }
+
+        function buildWorkoutsByTypeHTML() {
+            const counts = getWorkoutTypeCounts();
+            const total = fitnessState.workoutHistory.length;
+
+            return WORKOUT_CYCLE.map(w => {
+                const count = counts[w.id] || 0;
+                const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+                return `
+                    <div class="p-3 rounded-xl border border-slate-100 bg-slate-50">
+                        <div class="flex justify-between items-center mb-1.5">
+                            <div>
+                                <span class="text-xs font-bold uppercase tracking-wider text-slate-400">${w.code}</span>
+                                <p class="text-sm font-bold text-slate-800">${w.shortName}</p>
+                            </div>
+                            <div class="text-right">
+                                <span class="text-xl font-extrabold text-slate-900">${count}</span>
+                                <span class="text-[11px] text-slate-500 block">completed</span>
+                            </div>
+                        </div>
+                        <div class="w-full bg-slate-200 rounded-full h-2">
+                            <div class="${w.badgeColor} h-2 rounded-full transition-all" style="width: ${pct}%"></div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function buildExerciseHistoryListHTML(filterId = 'all') {
+            const entries = getExerciseHistoryEntries(filterId);
+            if (entries.length === 0) {
+                return `
+                    <div class="text-center py-8 text-slate-400 text-sm">
+                        No logged exercise history yet. Enter your weight & reps above and click <strong>Finish & Log Exercise</strong> to record your session.
+                    </div>
+                `;
+            }
+
+            return entries.map(entry => {
+                const setPills = entry.sets.map((s, idx) => `
+                    <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-white border border-slate-200 text-xs font-mono text-slate-800 shadow-2xs">
+                        <span class="text-slate-400 font-sans font-bold">S${s.setNumber || (idx + 1)}:</span>
+                        <span class="font-bold">${s.weight !== '' ? s.weight : 'BW'}</span><span class="text-[10px] text-slate-500">lbs</span>
+                        <span class="text-slate-400">×</span>
+                        <span class="font-bold text-blue-600">${s.reps !== '' ? s.reps : '0'}</span><span class="text-[10px] text-slate-500">reps</span>
+                    </span>
+                `).join('');
+
+                return `
+                    <div class="p-3.5 rounded-xl border border-slate-100 bg-slate-50/80 hover:bg-slate-50 transition-colors">
+                        <div class="flex flex-wrap justify-between items-center gap-2 mb-2">
+                            <div>
+                                <span class="text-sm font-bold text-slate-800">${entry.exerciseName}</span>
+                                <span class="ml-2 text-[11px] font-semibold px-2 py-0.5 rounded bg-slate-200 text-slate-700">${entry.workoutName}</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                ${entry.maxWeight > 0 ? `<span class="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">Top: ${entry.maxWeight} lbs</span>` : ''}
+                                <span class="text-xs font-semibold text-slate-500">${entry.date}</span>
+                            </div>
+                        </div>
+                        <div class="flex flex-wrap gap-1.5">
+                            ${setPills}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderWorkoutHistorySection() {
+            const byTypeContainer = document.getElementById('workoutsByTypeContainer');
+            const totalBadge = document.getElementById('totalWorkoutsBadge');
+            const historyList = document.getElementById('exerciseHistoryList');
+
+            if (totalBadge) {
+                totalBadge.textContent = `${fitnessState.workoutHistory.length} Total`;
+            }
+            if (byTypeContainer) {
+                byTypeContainer.innerHTML = buildWorkoutsByTypeHTML();
+            }
+            if (historyList) {
+                historyList.innerHTML = buildExerciseHistoryListHTML(selectedHistoryExerciseId);
+            }
+        }
+
+        function renderFitnessReportsUI() {
+            const reportsWorkoutTypes = document.getElementById('reportsWorkoutTypes');
+            const reportsExerciseHistory = document.getElementById('reportsExerciseHistory');
+            if (reportsWorkoutTypes) {
+                reportsWorkoutTypes.innerHTML = buildWorkoutsByTypeHTML();
+            }
+            if (reportsExerciseHistory) {
+                reportsExerciseHistory.innerHTML = buildExerciseHistoryListHTML('all');
+            }
         }
 
         function startRestTimer(seconds) {
@@ -1119,10 +1378,66 @@
                 const user = await ensureAuthenticated();
                 if (!user || !db) {
                     showError("Cannot log workout: Database is not connected.");
+                    btn.disabled = false;
+                    btn.innerHTML = '<span>Finish & Log Exercise</span>';
                     return;
                 }
 
-                // 1. Update Fitness Cycle State in Firestore
+                // Sync any currently typed weight/rep inputs from the DOM before building the workout record
+                document.querySelectorAll('#workoutExercisesContainer .fitness-input').forEach(input => {
+                    const exId = input.dataset.ex;
+                    const setIdx = parseInt(input.dataset.set);
+                    const field = input.dataset.field;
+                    if (!fitnessState.exerciseLogs[exId]) {
+                        fitnessState.exerciseLogs[exId] = { sets: [] };
+                    }
+                    const setsArr = fitnessState.exerciseLogs[exId].sets || [];
+                    while (setsArr.length <= setIdx) {
+                        setsArr.push({ weight: '', reps: '' });
+                    }
+                    setsArr[setIdx][field] = input.value.trim();
+                    fitnessState.exerciseLogs[exId].sets = setsArr;
+                });
+
+                // Build detailed exercise & set snapshot for this workout session
+                const sessionExercises = activeWorkout.exercises.map(ex => {
+                    const savedSets = (fitnessState.exerciseLogs[ex.id] && fitnessState.exerciseLogs[ex.id].sets) || [];
+                    const setsRecord = [];
+                    for (let s = 0; s < ex.sets; s++) {
+                        const weightVal = savedSets[s]?.weight ?? '';
+                        const repsVal = savedSets[s]?.reps ?? '';
+                        const checkKey = `${ex.id}_${s}`;
+                        setsRecord.push({
+                            setNumber: s + 1,
+                            weight: weightVal,
+                            reps: repsVal,
+                            completed: !!fitnessState.currentSessionChecks[checkKey] || (weightVal !== '' || repsVal !== '')
+                        });
+                    }
+                    return {
+                        exerciseId: ex.id,
+                        exerciseName: ex.name,
+                        order: ex.order,
+                        sets: setsRecord
+                    };
+                });
+
+                const nowTs = Date.now();
+                const sessionDocId = `${todayStr}_${nowTs}`;
+                const sessionRecord = {
+                    date: todayStr,
+                    timestamp: nowTs,
+                    workoutId: activeWorkout.id,
+                    workoutCode: activeWorkout.code,
+                    workoutName: activeWorkout.shortName,
+                    exercises: sessionExercises
+                };
+
+                // 1. Save full workout record to Firestore `workout_history` collection
+                const historyDocRef = doc(db, 'artifacts', appId, 'users', user.uid, 'workout_history', sessionDocId);
+                await setDoc(historyDocRef, sessionRecord);
+
+                // 2. Update Fitness Cycle State & latest progressive overload weights in Firestore
                 fitnessState.lastWorkoutId = activeWorkout.id;
                 fitnessState.lastWorkoutDate = todayStr;
                 fitnessState.currentSessionChecks = {};
@@ -1135,7 +1450,7 @@
                     exerciseLogs: fitnessState.exerciseLogs
                 }, { merge: true });
 
-                // 2. Automatically mark today's Exercise habit as TRUE on the Calendar
+                // 3. Automatically mark today's Exercise habit as TRUE on the Calendar
                 if (monthKey === getMonthKey(currentYear, currentMonth)) {
                     monthData[todayStr] = {
                         ...(monthData[todayStr] || {}),
@@ -1156,7 +1471,7 @@
                 activeWorkoutId = recommendedWorkoutId;
                 renderFitnessUI();
 
-                btn.innerHTML = '<span>✓ Logged! Exercise Checked Today</span>';
+                btn.innerHTML = '<span>✓ Workout & Sets Logged to Cloud!</span>';
                 setTimeout(() => {
                     btn.disabled = false;
                     btn.innerHTML = `
@@ -1406,6 +1721,7 @@
                 });
                 
                 renderChart(checkinData);
+                renderFitnessReportsUI();
 
             } catch (error) {
                 console.error("Error generating reports:", error);
